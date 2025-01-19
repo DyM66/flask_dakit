@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Dakit - Actualizar{% endblock %}
+
+{% block content %}
+    <h1 class="my-4">Actualizar entrada</h1>
+
+    <form action="{{ url_for('update', id=entry.id) }}" method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="title">Título</label>
+            <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
+        </div>
+        <!-- Campos adicionales -->
+        <div class="form-group">
+            <label for="creator">Autor/Director</label>
+            <input type="text" name="creator" id="creator" class="form-control" value="{{ entry.creator }}" required>
+        </div>
+        <div class="form-group">
+            <label for="year">Año</label>
+            <input type="number" name="year" id="year" class="form-control" value="{{ entry.year }}" required>
+        </div>
+        <div class="form-group">
+            <label for="platform">Plataforma</label>
+            <input type="text" name="platform" id="platform" class="form-control" value="{{ entry.platform }}" required>
+        </div>
+        <div class="form-group">
+            <label for="type">Tipo</label>
+            <select name="type" id="type" class="form-control" required>
+                <option value="Película" {% if entry.type == 'Película' %}selected{% endif %}>Película</option>
+                <option value="Serie" {% if entry.type == 'Serie' %}selected{% endif %}>Serie</option>
+                <option value="Libro" {% if entry.type == 'Libro' %}selected{% endif %}>Libro</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="genres">Géneros</label>
+            <select name="genres" id="genres" class="form-control" multiple required>
+                {% for genre in genres %}
+                <option value="{{ genre.id }}" {% if genre in entry.genres %}selected{% endif %}>{{ genre.name }}</option>
+                {% endfor %}
+            </select>
+            <small class="form-text text-muted">Mantén presionada la tecla Ctrl (Cmd en Mac) para seleccionar múltiples géneros.</small>
+        </div>
+        <div class="form-group">
+            <label for="image">Imagen (póster)</label>
+            <input type="file" name="image" id="image" class="form-control-file">
+            {% if entry.image %}
+            <p>Imagen actual:</p>
+            <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" alt="{{ entry.title }}" style="max-width: 200px;">
+            {% endif %}
+        </div>
+        <button type="submit" class="btn btn-success">Guardar cambios</button>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancelar</a>
+    </form>
+{% endblock %}

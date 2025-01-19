@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Dakit{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link id="dark-theme" rel="stylesheet" href="{{ url_for('static', filename='css/dark-mode.css') }}" disabled>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="{{ url_for('index') }}">Dakit</a>
+        <!-- Botón para cambiar el modo -->
+        <button id="theme-toggle" class="btn btn-outline-secondary ml-auto">Modo Oscuro</button>
+    </nav>
+    <div class="container mt-4">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Opcional: Bootstrap JS y dependencias -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Función para cambiar entre modo claro y oscuro
+        const themeToggle = document.getElementById('theme-toggle');
+        const darkThemeLink = document.getElementById('dark-theme');
+
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                darkThemeLink.disabled = false;
+                themeToggle.textContent = 'Modo Claro';
+            } else {
+                darkThemeLink.disabled = true;
+                themeToggle.textContent = 'Modo Oscuro';
+            }
+        }
+
+        const savedTheme = localStorage.getItem('theme');
+
+        if (savedTheme) {
+            applyTheme(savedTheme);
+        } else {
+            // Si no hay preferencia, detectar la preferencia del sistema
+            const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+            if (prefersDarkScheme.matches) {
+                applyTheme('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                applyTheme('light');
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        themeToggle.addEventListener('click', function() {
+            if (darkThemeLink.disabled) {
+                applyTheme('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                applyTheme('light');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+    </script>
+</body>
+</html>
