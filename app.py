@@ -246,6 +246,13 @@ def logout():
 
 # ─────────────────────────────── CLI ───────────────────────────────────
 
+@app.cli.command("init-db")
+def init_db():
+    """Crea las tablas que falten en la base de datos."""
+    db.create_all()
+    click.echo("Esquema verificado: tablas creadas/actualizadas.")
+
+
 @app.cli.command("create-user")
 @click.argument("username")
 @click.argument("password")
@@ -259,10 +266,6 @@ def create_user(username, password):
     db.session.add(user)
     db.session.commit()
     click.echo(f"Usuario '{username}' creado.")
-
-
-with app.app_context():
-    db.create_all()
 
 
 if __name__ == "__main__":
