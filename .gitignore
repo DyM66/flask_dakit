@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Datos de la app (NO versionar — son datos, no código)
+instance/
+static/uploads/
+
+# Entorno
+.env
+*.log
