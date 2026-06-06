@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}Dakit - Plataformas{% endblock %}
+
+{% block content %}
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <h1 class="h3 mb-1">Plataformas</h1>
+            <p class="text-muted">Dónde viste o leíste cada título (es lo que aparece en el desplegable al agregar).</p>
+
+            <form action="{{ url_for('add_platform') }}" method="POST" class="row g-2 mb-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col">
+                    <input type="text" name="name" class="form-control" placeholder="Nueva plataforma" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-success">Agregar</button>
+                </div>
+            </form>
+
+            {% if platforms %}
+            <ul class="list-group">
+                {% for platform in platforms %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ platform.name }}
+                    <form action="{{ url_for('delete_platform', id=platform.id) }}" method="POST" onsubmit="return confirm('¿Eliminar la plataforma «{{ platform.name }}»?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted">No hay plataformas todavía.</p>
+            {% endif %}
+
+            <a href="{{ url_for('index') }}" class="btn btn-link mt-3 px-0">← Volver a la biblioteca</a>
+        </div>
+    </div>
+{% endblock %}

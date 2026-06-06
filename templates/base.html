@@ -29,6 +29,7 @@
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('genres') }}">Géneros</a></li>
                     {% if current_user.is_authenticated %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('platforms') }}">Plataformas</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('users') }}">Usuarios</a></li>
                     {% endif %}
                 </ul>
@@ -98,7 +99,10 @@
                 </div>
                 <div class="mb-3">
                     <label for="platform" class="form-label">Plataforma</label>
-                    <input type="text" name="platform" id="platform" class="form-control" required>
+                    <select name="platform" id="platform" class="form-select" required>
+                        <option value="" disabled selected>Elige una plataforma…</option>
+                        {% for p in all_platforms %}<option value="{{ p.name }}">{{ p.name }}</option>{% endfor %}
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Géneros</label>

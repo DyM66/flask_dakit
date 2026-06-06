@@ -37,9 +37,11 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 @app.context_processor
 def inject_globals():
+    authed = current_user.is_authenticated
     return {
         "current_year": date.today().year,
-        "all_genres": Genre.query.order_by(Genre.name).all() if current_user.is_authenticated else [],
+        "all_genres": Genre.query.order_by(Genre.name).all() if authed else [],
+        "all_platforms": Platform.query.order_by(Platform.name).all() if authed else [],
     }
 
 
@@ -70,6 +72,14 @@ class Genre(db.Model):
 
     def __repr__(self):
         return f"<Genre {self.name}>"
+
+
+class Platform(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False, unique=True)
+
+    def __repr__(self):
+        return f"<Platform {self.name}>"
 
 
 class Entry(db.Model):
@@ -247,6 +257,44 @@ def delete_genre(id):
     return redirect(url_for("genres"))
 
 
+# ─────────────────────────────── Plataformas ───────────────────────────
+
+@app.route("/platforms")
+@login_required
+def platforms():
+    items = Platform.query.order_by(Platform.name).all()
+    return render_template("platforms.html", platforms=items)
+
+
+@app.route("/platforms/add", methods=["POST"])
+@login_required
+def add_platform():
+    name = request.form["name"].strip()
+    if name:
+        try:
+            db.session.add(Platform(name=name))
+            db.session.commit()
+            flash(f"Plataforma «{name}» agregada.", "success")
+        except Exception:
+            db.session.rollback()
+            flash("Esa plataforma ya existe o no es válida.", "danger")
+    return redirect(url_for("platforms"))
+
+
+@app.route("/platforms/delete/<int:id>", methods=["POST"])
+@login_required
+def delete_platform(id):
+    platform = db.get_or_404(Platform, id)
+    try:
+        db.session.delete(platform)
+        db.session.commit()
+        flash(f"Plataforma «{platform.name}» eliminada.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo eliminar la plataforma.", "danger")
+    return redirect(url_for("platforms"))
+
+
 # ───────────────────────────── Autenticación ───────────────────────────
 
 @app.route("/login", methods=["GET", "POST"])
@@ -323,6 +371,73 @@ def init_db():
     """Crea las tablas que falten en la base de datos."""
     db.create_all()
     click.echo("Esquema verificado: tablas creadas/actualizadas.")
+
+
+PLATFORM_SEED = [
+    "Netflix", "Disney Plus", "HBO Max", "Amazon Prime", "Apple TV+",
+    "Paramount+", "Star+", "Vix", "Crunchyroll", "Movistar Plus+",
+    "Claro Video", "Mubi", "Pluto TV", "Hulu", "Peacock", "YouTube",
+    "AnimeFLV", "Cuevana",
+    "Cine Colombia", "Royal Films", "Cinépolis", "Cinemark", "Procinal",
+    "Kindle", "Audible", "Físico (papel)", "Google Play Libros",
+    "Blu-ray/DVD", "Otra",
+]
+
+
+@app.cli.command("seed-platforms")
+def seed_platforms():
+    """Carga el catálogo de plataformas (idempotente)."""
+    created = 0
+    for name in PLATFORM_SEED:
+        if not Platform.query.filter_by(name=name).first():
+            db.session.add(Platform(name=name))
+            created += 1
+    db.session.commit()
+    click.echo(f"Plataformas: {created} nuevas, {Platform.query.count()} en total.")
+
+
+@app.cli.command("add-entry")
+@click.option("--title", required=True)
+@click.option("--creator", required=True)
+@click.option("--year", required=True, type=int)
+@click.option("--platform", required=True)
+@click.option("--type", "type_", required=True)
+@click.option("--genres", default="", help="Nombres de géneros separados por coma.")
+@click.option("--image-url", default="", help="URL de un póster para descargar.")
+def add_entry(title, creator, year, platform, type_, genres, image_url):
+    """Registra una entrada en la biblioteca desde la línea de comandos."""
+    entry = Entry(title=title, creator=creator, year=year, platform=platform, type=type_)
+
+    linked = []
+    for name in (g.strip() for g in genres.split(",") if g.strip()):
+        genre = Genre.query.filter(db.func.lower(Genre.name) == name.lower()).first()
+        if genre is None:
+            genre = Genre(name=name)
+            db.session.add(genre)
+        entry.genres.append(genre)
+        linked.append(name)
+
+    if image_url:
+        from urllib.parse import urlparse
+        from urllib.request import Request, urlopen
+
+        try:
+            ext = (os.path.splitext(urlparse(image_url).path)[1] or ".jpg").lower()
+            if ext.lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
+                ext = ".jpg"
+            filename = secure_filename(f"{title}{ext}")
+            request_ = Request(image_url, headers={"User-Agent": "dakit"})
+            with urlopen(request_, timeout=20) as response:
+                data = response.read()
+            with open(os.path.join(app.config["UPLOAD_FOLDER"], filename), "wb") as handle:
+                handle.write(data)
+            entry.image = filename
+        except Exception as exc:
+            click.echo(f"⚠️ No se pudo descargar la imagen: {exc}")
+
+    db.session.add(entry)
+    db.session.commit()
+    click.echo(f"Entrada «{title}» creada (géneros: {', '.join(linked) or 'ninguno'}).")
 
 
 @app.cli.command("create-user")

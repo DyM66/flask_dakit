@@ -32,7 +32,15 @@
                     </div>
                     <div class="col-md-4 mb-3">
                         <label for="platform" class="form-label">Plataforma</label>
-                        <input type="text" name="platform" id="platform" class="form-control" value="{{ entry.platform }}" required>
+                        <select name="platform" id="platform" class="form-select" required>
+                            {% set platform_names = all_platforms | map(attribute='name') | list %}
+                            {% if entry.platform and entry.platform not in platform_names %}
+                            <option value="{{ entry.platform }}" selected>{{ entry.platform }}</option>
+                            {% endif %}
+                            {% for p in all_platforms %}
+                            <option value="{{ p.name }}" {% if entry.platform == p.name %}selected{% endif %}>{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                 </div>
                 <div class="mb-3">
