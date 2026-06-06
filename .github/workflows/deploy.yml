@@ -1,0 +1,72 @@
+name: Deploy Dakit
+
+# Deploy automático: cada push a master se publica en el servidor.
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Desplegar al servidor
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT }}
+          command_timeout: 10m
+          script: |
+            set -Eeuo pipefail
+
+            APP_DIR="${{ secrets.SERVER_APP_PATH }}"
+            # Marcador de rollback FUERA del repo: sobrevive a `git reset --hard`.
+            ROLLBACK_MARK="$HOME/.deploy_last_dakit"
+
+            rollback() {
+              echo "❌ ERROR DETECTADO — INICIANDO ROLLBACK"
+              sudo journalctl -u dakit --no-pager -n 50 || true
+              if [ -f "$ROLLBACK_MARK" ]; then
+                LAST_COMMIT=$(cat "$ROLLBACK_MARK")
+                echo "↩️ Volviendo al commit: $LAST_COMMIT"
+                cd "$APP_DIR"
+                git reset --hard "$LAST_COMMIT"
+                .venv/bin/pip install -q -r requirements.txt || true
+                sudo systemctl restart dakit || true
+              else
+                echo "⚠️ Sin commit previo para rollback"
+              fi
+            }
+            trap rollback ERR
+
+            cd "$APP_DIR"
+
+            echo "💾 Guardando commit actual (marcador de rollback)..."
+            git rev-parse HEAD > "$ROLLBACK_MARK"
+
+            echo "🌀 Sincronizando código (force, evita conflictos en el server)..."
+            git fetch origin
+            git reset --hard origin/master
+
+            echo "📦 Instalando dependencias..."
+            .venv/bin/pip install -q -r requirements.txt
+
+            echo "🔄 Reiniciando el servicio..."
+            sudo systemctl restart dakit
+
+            echo "🔍 Health check (a Gunicorn, hasta 6 intentos)..."
+            ok=0
+            for i in $(seq 1 6); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ || true)
+              if [ "$code" = "200" ]; then ok=1; echo "✅ Gunicorn responde 200"; break; fi
+              echo "  intento $i: HTTP $code — reintentando en 3s..."
+              sleep 3
+            done
+            [ "$ok" = "1" ] || { echo "Health check fallido"; exit 1; }
+
+            echo "🎉 DEPLOY EXITOSO — guardando marcador"
+            git rev-parse HEAD > "$ROLLBACK_MARK"
+            trap - ERR
