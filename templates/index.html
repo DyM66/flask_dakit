@@ -3,15 +3,34 @@
 {% block title %}Dakit - Mi biblioteca{% endblock %}
 
 {% block content %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-0">Mi biblioteca</h1>
-            <small class="text-muted">{{ entries|length }} título{{ '' if entries|length == 1 else 's' }}</small>
-        </div>
-        {% if current_user.is_authenticated %}
-        <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#addDrawer">+ Agregar título</button>
-        {% endif %}
+    <div class="mb-4">
+        <h1 class="h3 mb-0">Mi biblioteca</h1>
+        <small class="text-muted">{{ entries|length }} título{{ '' if entries|length == 1 else 's' }}</small>
     </div>
+
+    <form method="GET" class="row g-2 mb-4">
+        <div class="col-12 col-md">
+            <input type="search" name="q" class="form-control" placeholder="Buscar por título o autor…" value="{{ filters.q }}">
+        </div>
+        <div class="col-6 col-md-auto">
+            <select name="type" class="form-select" onchange="this.form.submit()">
+                <option value="">Todos los tipos</option>
+                {% for t in types %}<option value="{{ t }}" {% if filters.type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-6 col-md-auto">
+            <select name="year" class="form-select" onchange="this.form.submit()">
+                <option value="">Todos los años</option>
+                {% for y in years %}<option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-12 col-md-auto d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Buscar</button>
+            {% if filters.q or filters.type or filters.year %}
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Limpiar</a>
+            {% endif %}
+        </div>
+    </form>
 
     {% if entries %}
     <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-xl-5 g-3">
@@ -42,65 +61,13 @@
     </div>
     {% else %}
     <div class="text-center text-muted py-5">
+        {% if filters.q or filters.type or filters.year %}
+        <p class="mb-1">No hay títulos que coincidan con el filtro.</p>
+        <a href="{{ url_for('index') }}">Ver todos</a>
+        {% else %}
         <p class="mb-1">Tu biblioteca está vacía.</p>
         {% if current_user.is_authenticated %}<p class="mb-0">Usa «+ Agregar título» para empezar.</p>{% endif %}
-    </div>
-    {% endif %}
-
-    {% if current_user.is_authenticated %}
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="addDrawer" aria-labelledby="addDrawerLabel">
-        <div class="offcanvas-header">
-            <h5 class="offcanvas-title" id="addDrawerLabel">Agregar a la biblioteca</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
-        </div>
-        <div class="offcanvas-body">
-            <form action="{{ url_for('add') }}" method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label for="title" class="form-label">Título</label>
-                    <input type="text" name="title" id="title" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label for="creator" class="form-label">Autor / Director</label>
-                    <input type="text" name="creator" id="creator" class="form-control" required>
-                </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label for="year" class="form-label">Año</label>
-                        <input type="number" name="year" id="year" class="form-control" required>
-                    </div>
-                    <div class="col-6 mb-3">
-                        <label for="type" class="form-label">Tipo</label>
-                        <select name="type" id="type" class="form-select" required>
-                            <option value="Película">Película</option>
-                            <option value="Serie">Serie</option>
-                            <option value="Anime">Anime</option>
-                            <option value="Libro">Libro</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="platform" class="form-label">Plataforma</label>
-                    <input type="text" name="platform" id="platform" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Géneros</label>
-                    <div class="d-flex flex-wrap gap-2">
-                        {% for genre in genres %}
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="genres" value="{{ genre.id }}" id="add-g{{ genre.id }}">
-                            <label class="form-check-label" for="add-g{{ genre.id }}">{{ genre.name }}</label>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="image" class="form-label">Imagen (póster)</label>
-                    <input type="file" name="image" id="image" class="form-control" accept="image/*">
-                </div>
-                <button type="submit" class="btn btn-success w-100">Agregar</button>
-            </form>
-        </div>
+        {% endif %}
     </div>
     {% endif %}
 {% endblock %}

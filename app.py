@@ -1,4 +1,5 @@
 import os
+from datetime import date
 
 import click
 from flask import Flask, flash, redirect, render_template, request, url_for
@@ -13,6 +14,7 @@ from flask_login import (
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
+from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -31,6 +33,14 @@ login_manager.login_message = "Inicia sesión para administrar la biblioteca."
 login_manager.login_message_category = "warning"
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+
+@app.context_processor
+def inject_globals():
+    return {
+        "current_year": date.today().year,
+        "all_genres": Genre.query.order_by(Genre.name).all() if current_user.is_authenticated else [],
+    }
 
 
 # ─────────────────────────────── Modelos ───────────────────────────────
@@ -110,9 +120,29 @@ def selected_genres():
 
 @app.route("/")
 def index():
-    entries = Entry.query.order_by(Entry.title).all()
-    genres = Genre.query.order_by(Genre.name).all()
-    return render_template("index.html", entries=entries, genres=genres)
+    q = request.args.get("q", "").strip()
+    type_filter = request.args.get("type", "").strip()
+    year_filter = request.args.get("year", type=int)
+
+    query = Entry.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Entry.title.ilike(like), Entry.creator.ilike(like)))
+    if type_filter:
+        query = query.filter(Entry.type == type_filter)
+    if year_filter:
+        query = query.filter(Entry.year == year_filter)
+
+    entries = query.order_by(Entry.title).all()
+    types = [t for (t,) in db.session.query(Entry.type).distinct().order_by(Entry.type)]
+    years = [y for (y,) in db.session.query(Entry.year).distinct().order_by(Entry.year.desc())]
+    return render_template(
+        "index.html",
+        entries=entries,
+        types=types,
+        years=years,
+        filters={"q": q, "type": type_filter, "year": year_filter},
+    )
 
 
 @app.route("/add", methods=["POST"])
