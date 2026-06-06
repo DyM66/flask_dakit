@@ -3,43 +3,41 @@
 {% block title %}Dakit - Géneros{% endblock %}
 
 {% block content %}
-    <h1>Géneros</h1>
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <h1 class="h3 mb-4">Géneros</h1>
 
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Nombre</th>
-                {% if current_user.is_authenticated %}<th>Acciones</th>{% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for genre in genres %}
-            <tr>
-                <td>{{ genre.name }}</td>
-                {% if current_user.is_authenticated %}
-                <td>
-                    <form action="{{ url_for('delete_genre', id=genre.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar el género «{{ genre.name }}»?');">
+            {% if current_user.is_authenticated %}
+            <form action="{{ url_for('add_genre') }}" method="POST" class="row g-2 mb-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col">
+                    <input type="text" name="name" class="form-control" placeholder="Nuevo género" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-success">Agregar</button>
+                </div>
+            </form>
+            {% endif %}
+
+            {% if genres %}
+            <ul class="list-group">
+                {% for genre in genres %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ genre.name }}
+                    {% if current_user.is_authenticated %}
+                    <form action="{{ url_for('delete_genre', id=genre.id) }}" method="POST" onsubmit="return confirm('¿Eliminar el género «{{ genre.name }}»?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
                     </form>
-                </td>
-                {% endif %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted">No hay géneros todavía.</p>
+            {% endif %}
 
-    {% if current_user.is_authenticated %}
-    <h2>Agregar nuevo género</h2>
-    <form action="{{ url_for('add_genre') }}" method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-            <label for="name">Nombre del género</label>
-            <input type="text" name="name" id="name" class="form-control" required>
+            <a href="{{ url_for('index') }}" class="btn btn-link mt-3 px-0">← Volver a la biblioteca</a>
         </div>
-        <button type="submit" class="btn btn-success">Agregar</button>
-    </form>
-    {% endif %}
-
-    <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Volver al inicio</a>
+    </div>
 {% endblock %}

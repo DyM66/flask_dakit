@@ -1,56 +1,65 @@
 {% extends 'base.html' %}
 
-{% block title %}Dakit - Actualizar{% endblock %}
+{% block title %}Dakit - Editar{% endblock %}
 
 {% block content %}
-    <h1 class="my-4">Actualizar entrada</h1>
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <h1 class="h3 mb-4">Editar «{{ entry.title }}»</h1>
 
-    <form action="{{ url_for('update', id=entry.id) }}" method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-            <label for="title">Título</label>
-            <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
+            <form action="{{ url_for('update', id=entry.id) }}" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label for="title" class="form-label">Título</label>
+                    <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="creator" class="form-label">Autor / Director</label>
+                    <input type="text" name="creator" id="creator" class="form-control" value="{{ entry.creator }}" required>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="year" class="form-label">Año</label>
+                        <input type="number" name="year" id="year" class="form-control" value="{{ entry.year }}" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="type" class="form-label">Tipo</label>
+                        <select name="type" id="type" class="form-select" required>
+                            {% for t in ['Película', 'Serie', 'Anime', 'Libro'] %}
+                            <option value="{{ t }}" {% if entry.type == t %}selected{% endif %}>{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="platform" class="form-label">Plataforma</label>
+                        <input type="text" name="platform" id="platform" class="form-control" value="{{ entry.platform }}" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Géneros</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for genre in genres %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="genres" value="{{ genre.id }}" id="edit-g{{ genre.id }}" {% if genre in entry.genres %}checked{% endif %}>
+                            <label class="form-check-label" for="edit-g{{ genre.id }}">{{ genre.name }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="image" class="form-label">Imagen (póster)</label>
+                    <input type="file" name="image" id="image" class="form-control" accept="image/*">
+                    {% if entry.image %}
+                    <div class="mt-2">
+                        <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" alt="{{ entry.title }}" class="rounded preview-img">
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Guardar cambios</button>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
         </div>
-        <!-- Campos adicionales -->
-        <div class="form-group">
-            <label for="creator">Autor/Director</label>
-            <input type="text" name="creator" id="creator" class="form-control" value="{{ entry.creator }}" required>
-        </div>
-        <div class="form-group">
-            <label for="year">Año</label>
-            <input type="number" name="year" id="year" class="form-control" value="{{ entry.year }}" required>
-        </div>
-        <div class="form-group">
-            <label for="platform">Plataforma</label>
-            <input type="text" name="platform" id="platform" class="form-control" value="{{ entry.platform }}" required>
-        </div>
-        <div class="form-group">
-            <label for="type">Tipo</label>
-            <select name="type" id="type" class="form-control" required>
-                <option value="Película" {% if entry.type == 'Película' %}selected{% endif %}>Película</option>
-                <option value="Serie" {% if entry.type == 'Serie' %}selected{% endif %}>Serie</option>
-                <option value="Anime" {% if entry.type == 'Anime' %}selected{% endif %}>Anime</option>
-                <option value="Libro" {% if entry.type == 'Libro' %}selected{% endif %}>Libro</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="genres">Géneros</label>
-            <select name="genres" id="genres" class="form-control" multiple required>
-                {% for genre in genres %}
-                <option value="{{ genre.id }}" {% if genre in entry.genres %}selected{% endif %}>{{ genre.name }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text text-muted">Mantén presionada la tecla Ctrl (Cmd en Mac) para seleccionar múltiples géneros.</small>
-        </div>
-        <div class="form-group">
-            <label for="image">Imagen (póster)</label>
-            <input type="file" name="image" id="image" class="form-control-file">
-            {% if entry.image %}
-            <p>Imagen actual:</p>
-            <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" alt="{{ entry.title }}" style="max-width: 200px;">
-            {% endif %}
-        </div>
-        <button type="submit" class="btn btn-success">Guardar cambios</button>
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancelar</a>
-    </form>
+    </div>
 {% endblock %}

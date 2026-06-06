@@ -244,6 +244,48 @@ def logout():
     return redirect(url_for("index"))
 
 
+# ─────────────────────────────── Usuarios ──────────────────────────────
+
+@app.route("/users")
+@login_required
+def users():
+    items = User.query.order_by(User.username).all()
+    return render_template("users.html", users=items)
+
+
+@app.route("/users/add", methods=["POST"])
+@login_required
+def add_user():
+    username = request.form["username"].strip()
+    password = request.form["password"]
+    if not username or not password:
+        flash("Usuario y contraseña son obligatorios.", "danger")
+    elif User.query.filter_by(username=username).first():
+        flash(f"El usuario «{username}» ya existe.", "danger")
+    else:
+        user = User(username=username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        flash(f"Usuario «{username}» creado.", "success")
+    return redirect(url_for("users"))
+
+
+@app.route("/users/delete/<int:id>", methods=["POST"])
+@login_required
+def delete_user(id):
+    user = db.get_or_404(User, id)
+    if user.id == current_user.id:
+        flash("No puedes eliminar tu propia cuenta mientras la usas.", "danger")
+    elif User.query.count() <= 1:
+        flash("No puedes eliminar el único usuario (quedarías sin acceso).", "danger")
+    else:
+        db.session.delete(user)
+        db.session.commit()
+        flash(f"Usuario «{user.username}» eliminado.", "success")
+    return redirect(url_for("users"))
+
+
 # ─────────────────────────────── CLI ───────────────────────────────────
 
 @app.cli.command("init-db")
