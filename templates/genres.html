@@ -9,29 +9,37 @@
         <thead>
             <tr>
                 <th>Nombre</th>
-                <th>Acciones</th>
+                {% if current_user.is_authenticated %}<th>Acciones</th>{% endif %}
             </tr>
         </thead>
         <tbody>
             {% for genre in genres %}
             <tr>
                 <td>{{ genre.name }}</td>
+                {% if current_user.is_authenticated %}
                 <td>
-                    <a href="{{ url_for('delete_genre', id=genre.id) }}" class="btn btn-sm btn-danger">Eliminar</a>
+                    <form action="{{ url_for('delete_genre', id=genre.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar el género «{{ genre.name }}»?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    </form>
                 </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
+    {% if current_user.is_authenticated %}
     <h2>Agregar nuevo género</h2>
-    <form action="{{ url_for('genres') }}" method="POST">
+    <form action="{{ url_for('add_genre') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="name">Nombre del género</label>
             <input type="text" name="name" id="name" class="form-control" required>
         </div>
         <button type="submit" class="btn btn-success">Agregar</button>
     </form>
+    {% endif %}
 
     <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Volver al inicio</a>
 {% endblock %}

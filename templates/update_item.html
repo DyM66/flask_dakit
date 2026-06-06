@@ -6,6 +6,7 @@
     <h1 class="my-4">Actualizar entrada</h1>
 
     <form action="{{ url_for('update', id=entry.id) }}" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="title">Título</label>
             <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
@@ -28,6 +29,7 @@
             <select name="type" id="type" class="form-control" required>
                 <option value="Película" {% if entry.type == 'Película' %}selected{% endif %}>Película</option>
                 <option value="Serie" {% if entry.type == 'Serie' %}selected{% endif %}>Serie</option>
+                <option value="Anime" {% if entry.type == 'Anime' %}selected{% endif %}>Anime</option>
                 <option value="Libro" {% if entry.type == 'Libro' %}selected{% endif %}>Libro</option>
             </select>
         </div>
