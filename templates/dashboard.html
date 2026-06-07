@@ -89,7 +89,7 @@
         <div class="card h-100 shadow-sm">
             <div class="card-body">
                 <h2 class="h6 mb-3">🎬 Directores / autores más frecuentes</h2>
-                <div class="people-scroll">{{ peoplerows(top_directors, 'primary') }}</div>
+                {{ peoplerows(top_directors, 'primary') }}
             </div>
         </div>
     </div>
@@ -104,7 +104,7 @@
                     </div>
                 </div>
                 <p class="text-muted small mb-2">{% if actor_metric == 'characters' %}Por nº de personajes <strong>distintos</strong> que has visto interpretar (versatilidad).{% else %}Por nº de apariciones en tu biblioteca.{% endif %}</p>
-                <div class="people-scroll">{{ peoplerows(top_actors, 'danger') }}</div>
+                {{ peoplerows(top_actors, 'danger') }}
             </div>
         </div>
     </div>
@@ -119,7 +119,7 @@
             <div class="card-body">
                 <h2 class="h6 mb-1">🎯 Icónicos por un personaje</h2>
                 <p class="text-muted small mb-2">Quién sale más veces como el <strong>mismo</strong> personaje.</p>
-                <div class="people-scroll">{{ iconicrows(top_iconic) }}</div>
+                {{ iconicrows(top_iconic) }}
             </div>
         </div>
     </div>
