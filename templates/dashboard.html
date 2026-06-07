@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block title %}Dakit - Dashboard{% endblock %}
+
+{% macro barlist(title, items, color) %}
+<div class="card h-100 shadow-sm">
+    <div class="card-body">
+        <h2 class="h6 mb-3">{{ title }}</h2>
+        {% if items %}
+        {% for name, count, pct in items %}
+        <div class="mb-2">
+            <div class="d-flex justify-content-between small">
+                <span class="text-truncate me-2">{{ name }}</span>
+                <span class="text-muted">{{ count }}</span>
+            </div>
+            <div class="progress dakit-bar">
+                <div class="progress-bar bg-{{ color }}" role="progressbar" data-pct="{{ pct }}"></div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-0">Sin datos.</p>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3 mb-0">📊 Mi dashboard</h1>
+    <small class="text-muted">Cómo son tus gustos según tu biblioteca</small>
+</div>
+
+<div class="row row-cols-2 row-cols-md-4 g-3 mb-4">
+    <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body py-3">
+        <div class="fs-2 fw-bold">{{ total }}</div><div class="text-muted small">títulos</div></div></div></div>
+    <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body py-3">
+        <div class="fs-2 fw-bold">{{ total_seasons }}</div><div class="text-muted small">temporadas · {{ total_seasons_series }} series</div></div></div></div>
+    <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body py-3">
+        <div class="fs-2 fw-bold">{{ unique_directors }}</div><div class="text-muted small">directores/autores</div></div></div></div>
+    <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body py-3">
+        <div class="fs-4 fw-bold">{{ oldest }}–{{ newest }}</div><div class="text-muted small">rango de años</div></div></div></div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-6">{{ barlist('🎬 Directores / autores más frecuentes', top_directors, 'primary') }}</div>
+    <div class="col-12 col-lg-6">{{ barlist('🎭 Géneros más vistos', top_genres, 'success') }}</div>
+    <div class="col-12 col-lg-6">{{ barlist('📺 Plataformas más usadas', top_platforms, 'info') }}</div>
+    <div class="col-12 col-lg-6">{{ barlist('🗂️ Por tipo', by_type, 'warning') }}</div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-3">📅 Por década</h2>
+                {% for decade, count in by_decade %}
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small"><span>{{ decade }}s</span><span class="text-muted">{{ count }}</span></div>
+                    <div class="progress dakit-bar"><div class="progress-bar bg-secondary" data-pct="{{ (count / total * 100) | round }}"></div></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-3">🏆 Series con más temporadas</h2>
+                {% if top_series %}
+                <ol class="mb-0 ps-3">
+                    {% for title, n in top_series %}
+                    <li class="mb-1">{{ title }} <span class="badge text-bg-secondary">{{ n }}</span></li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-muted small mb-0">Aún no hay series con temporadas.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<a href="{{ url_for('index') }}" class="btn btn-link mt-3 px-0">← Volver a la biblioteca</a>
+{% endblock %}

@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 from datetime import date
 
 import click
@@ -172,6 +173,15 @@ def resolve_poster(basename):
     return save_image(request.files.get("image"))
 
 
+def ranked_with_pct(counter, limit):
+    """Convierte un Counter en [(nombre, conteo, porcentaje_vs_top)] para barras."""
+    items = counter.most_common(limit)
+    if not items:
+        return []
+    top = items[0][1]
+    return [(name, count, round(count / top * 100)) for name, count in items]
+
+
 # ─────────────────────────────── Catálogo ──────────────────────────────
 
 @app.route("/")
@@ -198,6 +208,55 @@ def index():
         types=types,
         years=years,
         filters={"q": q, "type": type_filter, "year": year_filter},
+    )
+
+
+@app.route("/dashboard")
+def dashboard():
+    entries = Entry.query.all()
+    total = len(entries)
+
+    type_counter = Counter()
+    platform_counter = Counter()
+    director_counter = Counter()
+    genre_counter = Counter()
+    decade_counter = Counter()
+    years = []
+
+    for entry in entries:
+        type_counter[entry.type] += 1
+        if entry.platform:
+            platform_counter[entry.platform] += 1
+        for name in (entry.creator or "").split(","):
+            name = name.strip()
+            if name:
+                director_counter[name] += 1
+        for genre in entry.genres:
+            genre_counter[genre.name] += 1
+        if entry.year:
+            years.append(entry.year)
+            decade_counter[(entry.year // 10) * 10] += 1
+
+    series_with_seasons = sorted(
+        ((e.title, len(e.seasons)) for e in entries if e.seasons),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+
+    return render_template(
+        "dashboard.html",
+        total=total,
+        total_seasons=Season.query.count(),
+        total_seasons_series=len(series_with_seasons),
+        oldest=min(years) if years else None,
+        newest=max(years) if years else None,
+        top_directors=ranked_with_pct(director_counter, 10),
+        top_genres=ranked_with_pct(genre_counter, 10),
+        top_platforms=ranked_with_pct(platform_counter, 8),
+        by_type=ranked_with_pct(type_counter, 10),
+        by_decade=sorted(decade_counter.items()),
+        top_series=series_with_seasons[:8],
+        unique_directors=len(director_counter),
     )
 
 
