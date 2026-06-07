@@ -351,6 +351,7 @@ def download_poster(url, basename):
     from urllib.parse import urlparse
     from urllib.request import Request, urlopen
 
+    url = url.replace(" ", "%20")  # tolera nombres de archivo con espacios (Wikimedia)
     ext = (os.path.splitext(urlparse(url).path)[1] or ".jpg").lower()
     if ext.lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
         ext = ".jpg"
