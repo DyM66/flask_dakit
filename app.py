@@ -88,6 +88,7 @@ class Entry(db.Model):
     # Mapeado a la columna existente "title_es" para no migrar el schema.
     title_alt = db.Column("title_es", db.String(200))
     creator = db.Column(db.String(100), nullable=False)
+    main_cast = db.Column(db.String(500))  # reparto principal: nombres separados por coma
     year = db.Column(db.Integer, nullable=False)
     platform = db.Column(db.String(50), nullable=False)
     type = db.Column(db.String(20), nullable=False)
@@ -231,6 +232,7 @@ def dashboard():
     type_counter = Counter()
     platform_counter = Counter()
     director_counter = Counter()
+    actor_counter = Counter()
     genre_counter = Counter()
     decade_counter = Counter()
     years = []
@@ -243,6 +245,10 @@ def dashboard():
             name = name.strip()
             if name:
                 director_counter[name] += 1
+        for name in (entry.main_cast or "").split(","):
+            name = name.strip()
+            if name:
+                actor_counter[name] += 1
         for genre in entry.genres:
             genre_counter[genre.name] += 1
         if entry.year:
@@ -262,13 +268,15 @@ def dashboard():
         total_seasons_series=len(series_with_seasons),
         oldest=min(years) if years else None,
         newest=max(years) if years else None,
-        top_directors=ranked_with_pct(director_counter, 10),
+        top_directors=ranked_with_pct(director_counter, 25),
+        top_actors=ranked_with_pct(actor_counter, 25),
         top_genres=ranked_with_pct(genre_counter, 10),
         top_platforms=ranked_with_pct(platform_counter, 8),
         by_type=ranked_with_pct(type_counter, 10),
         by_decade=sorted(decade_counter.items()),
         top_series=series_with_seasons[:8],
         unique_directors=len(director_counter),
+        unique_actors=len(actor_counter),
     )
 
 
@@ -279,6 +287,7 @@ def add():
         title=request.form["title"],
         title_alt=request.form.get("title_alt", "").strip() or None,
         creator=request.form["creator"],
+        main_cast=request.form.get("main_cast", "").strip() or None,
         year=request.form.get("year", type=int),
         platform=request.form["platform"],
         type=request.form["type"],
@@ -303,6 +312,7 @@ def update(id):
         entry.title = request.form["title"]
         entry.title_alt = request.form.get("title_alt", "").strip() or None
         entry.creator = request.form["creator"]
+        entry.main_cast = request.form.get("main_cast", "").strip() or None
         entry.year = request.form.get("year", type=int)
         entry.platform = request.form["platform"]
         entry.type = request.form["type"]
@@ -583,16 +593,18 @@ def seed_platforms():
 @click.option("--title", required=True, help="Título original (principal).")
 @click.option("--title-alt", "title_alt", default="", help="Título alternativo oficial (si difiere del original).")
 @click.option("--creator", required=True)
+@click.option("--cast", "main_cast", default="", help="Reparto principal: actores separados por coma.")
 @click.option("--year", required=True, type=int)
 @click.option("--platform", required=True)
 @click.option("--type", "type_", required=True)
 @click.option("--genres", default="", help="Nombres de géneros separados por coma.")
 @click.option("--image-url", default="", help="URL de un póster para descargar.")
-def add_entry(title, title_alt, creator, year, platform, type_, genres, image_url):
+def add_entry(title, title_alt, creator, main_cast, year, platform, type_, genres, image_url):
     """Registra una entrada en la biblioteca desde la línea de comandos."""
     entry = Entry(
         title=title, title_alt=title_alt.strip() or None,
-        creator=creator, year=year, platform=platform, type=type_,
+        creator=creator, main_cast=main_cast.strip() or None,
+        year=year, platform=platform, type=type_,
     )
     db.session.add(entry)
 
