@@ -500,15 +500,44 @@ def dashboard():
     director_counter = Counter()
     actor_counter = Counter()
     actor_characters = defaultdict(set)
-    for person_id, role, character in db.session.query(EntryPerson.person_id, EntryPerson.role, EntryPerson.character):
+    char_per_person = defaultdict(Counter)
+    char_titles = defaultdict(set)
+    entry_people = Counter()
+    for entry_id, person_id, role, character in db.session.query(
+        EntryPerson.entry_id, EntryPerson.person_id, EntryPerson.role, EntryPerson.character
+    ):
+        entry_people[entry_id] += 1
         if role == "director":
             director_counter[person_id] += 1
         else:
             actor_counter[person_id] += 1
             if character:
-                actor_characters[person_id].add(character.strip().lower())
+                ch = character.strip()
+                actor_characters[person_id].add(ch.lower())
+                char_per_person[person_id][ch] += 1
+                char_titles[ch].add(entry_id)
     versatility_counter = Counter({pid: len(chars) for pid, chars in actor_characters.items()})
     actor_metric = "characters" if request.args.get("actors") == "characters" else "appearances"
+
+    nationality_counter = Counter(p.nationality for p in Person.query.filter(Person.nationality.isnot(None)))
+
+    # Icónicos: top apariciones como un mismo personaje (>= 2)
+    iconic_raw = sorted(
+        ((pid, *counter.most_common(1)[0]) for pid, counter in char_per_person.items()),
+        key=lambda item: item[2], reverse=True,
+    )
+    iconic_raw = [x for x in iconic_raw if x[2] >= 2][:12]
+    iconic_top = iconic_raw[0][2] if iconic_raw else 1
+    iconic_people = {p.id: p for p in Person.query.filter(Person.id.in_([x[0] for x in iconic_raw]))}
+    top_iconic = [(iconic_people[pid], ch, n, round(n / iconic_top * 100)) for pid, ch, n in iconic_raw]
+
+    # Personajes que cruzan más títulos (>= 2)
+    recurring_counter = Counter({ch: len(titles) for ch, titles in char_titles.items() if len(titles) >= 2})
+
+    # Obras más corales (más personas registradas)
+    coral_raw = entry_people.most_common(8)
+    coral_map = {e.id: e for e in Entry.query.filter(Entry.id.in_([eid for eid, _ in coral_raw]))}
+    top_coral = [(coral_map[eid], n) for eid, n in coral_raw if eid in coral_map]
 
     series_with_seasons = sorted(
         ((e.title, len(e.seasons)) for e in entries if e.seasons),
@@ -526,6 +555,10 @@ def dashboard():
         top_directors=ranked_people(director_counter, 40),
         top_actors=ranked_people(versatility_counter if actor_metric == "characters" else actor_counter, 40),
         actor_metric=actor_metric,
+        top_nationalities=ranked_with_pct(nationality_counter, 12),
+        top_iconic=top_iconic,
+        top_characters=ranked_with_pct(recurring_counter, 10),
+        top_coral=top_coral,
         top_genres=ranked_with_pct(genre_counter, 10),
         top_platforms=ranked_with_pct(platform_counter, 8),
         by_type=ranked_with_pct(type_counter, 10),

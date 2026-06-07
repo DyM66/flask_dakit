@@ -48,6 +48,25 @@
 {% endif %}
 {% endmacro %}
 
+{% macro iconicrows(items) %}
+{% if items %}
+{% for person, character, count, pct in items %}
+<div class="mb-2">
+    <div class="d-flex justify-content-between align-items-center small">
+        <a href="{{ url_for('person_detail', person_id=person.id) }}" class="d-flex align-items-center gap-2 text-truncate text-decoration-none text-reset me-2">
+            {{ avatar(person, 'avatar-xs rounded-circle flex-shrink-0') }}
+            <span class="text-truncate">{{ person.name }} <span class="text-muted">· {{ character }}</span></span>
+        </a>
+        <span class="text-muted">{{ count }}</span>
+    </div>
+    <div class="progress dakit-bar"><div class="progress-bar bg-dark" role="progressbar" data-pct="{{ pct }}"></div></div>
+</div>
+{% endfor %}
+{% else %}
+<p class="text-muted small mb-0">Sin datos.</p>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="mb-4">
     <h1 class="h3 mb-0">📊 Mi dashboard</h1>
@@ -92,6 +111,37 @@
     <div class="col-12 col-lg-6">{{ barlist('🎭 Géneros más vistos', top_genres, 'success') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('📺 Plataformas más usadas', top_platforms, 'info') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('🗂️ Por tipo', by_type, 'warning') }}</div>
+
+    <div class="col-12 col-lg-6">{{ barlist('🌍 Nacionalidades de tu gente', top_nationalities, 'secondary') }}</div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-1">🎯 Icónicos por un personaje</h2>
+                <p class="text-muted small mb-2">Quién sale más veces como el <strong>mismo</strong> personaje.</p>
+                <div class="people-scroll">{{ iconicrows(top_iconic) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">{{ barlist('🎭 Personajes en más títulos', top_characters, 'danger') }}</div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-3">✨ Obras con más estrellas registradas</h2>
+                {% if top_coral %}
+                <ol class="mb-0 ps-3">
+                    {% for entry, n in top_coral %}
+                    <li class="mb-1"><a href="{{ url_for('index', q=entry.title) }}" class="text-decoration-none text-reset">{{ entry.title }}</a> <span class="badge text-bg-secondary">{{ n }}</span></li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-muted small mb-0">Sin datos.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 
     <div class="col-12 col-lg-6">
         <div class="card h-100 shadow-sm">
