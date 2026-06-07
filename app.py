@@ -407,6 +407,7 @@ def seed_platforms():
 def add_entry(title, creator, year, platform, type_, genres, image_url):
     """Registra una entrada en la biblioteca desde la línea de comandos."""
     entry = Entry(title=title, creator=creator, year=year, platform=platform, type=type_)
+    db.session.add(entry)
 
     linked = []
     for name in (g.strip() for g in genres.split(",") if g.strip()):
@@ -435,7 +436,6 @@ def add_entry(title, creator, year, platform, type_, genres, image_url):
         except Exception as exc:
             click.echo(f"⚠️ No se pudo descargar la imagen: {exc}")
 
-    db.session.add(entry)
     db.session.commit()
     click.echo(f"Entrada «{title}» creada (géneros: {', '.join(linked) or 'ninguno'}).")
 
