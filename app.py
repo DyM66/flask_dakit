@@ -2,7 +2,7 @@ import os
 import secrets
 import smtplib
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 
@@ -311,7 +311,7 @@ def save_person_photo(person):
     url = request.form.get("photo_url", "").strip()
     if url:
         try:
-            new = download_poster(url, f"person_{person.id}")
+            new = download_poster(url, f"person_{person.id}", max_dim=PERSON_PHOTO_DIM)
         except Exception as exc:
             flash(f"No se pudo descargar la foto: {exc}", "danger")
             return
@@ -321,6 +321,7 @@ def save_person_photo(person):
             ext = os.path.splitext(file.filename)[1].lower() or ".jpg"
             new = secure_filename(f"person_{person.id}{ext}")
             file.save(os.path.join(app.config["UPLOAD_FOLDER"], new))
+            downscale_image(os.path.join(app.config["UPLOAD_FOLDER"], new), PERSON_PHOTO_DIM)
     if new:
         if old and old != new:
             old_path = os.path.join(app.config["UPLOAD_FOLDER"], old)
@@ -370,7 +371,29 @@ def save_image(file):
     return None
 
 
-def download_poster(url, basename):
+PERSON_PHOTO_DIM = 500  # px máx del lado mayor para fotos de personas (avatares/fichas)
+
+
+def downscale_image(path, max_dim):
+    """Reduce la imagen a max_dim px en su lado mayor (solo si es mayor). Re-guarda en sitio."""
+    try:
+        from PIL import Image
+        ext = os.path.splitext(path)[1].lower()
+        fmt = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP", ".gif": "GIF"}.get(ext, "JPEG")
+        with Image.open(path) as img:
+            if max(img.size) <= max_dim:
+                return
+            img.thumbnail((max_dim, max_dim))
+            if fmt == "JPEG" and img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            tmp = path + ".tmp"
+            img.save(tmp, format=fmt)
+        os.replace(tmp, path)
+    except Exception:
+        pass  # si Pillow falla, conserva la imagen original sin romper la descarga
+
+
+def download_poster(url, basename, max_dim=None):
     from urllib.parse import urlparse
     from urllib.request import Request, urlopen
 
@@ -379,11 +402,14 @@ def download_poster(url, basename):
     if ext.lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
         ext = ".jpg"
     filename = secure_filename(f"{basename}{ext}")
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     http_request = Request(url, headers={"User-Agent": "DakitBot/1.0 (https://dakit.dycloud.co; biblioteca personal)"})
     with urlopen(http_request, timeout=20) as response:
         data = response.read()
-    with open(os.path.join(app.config["UPLOAD_FOLDER"], filename), "wb") as handle:
+    with open(filepath, "wb") as handle:
         handle.write(data)
+    if max_dim:
+        downscale_image(filepath, max_dim)
     return filename
 
 
@@ -473,8 +499,16 @@ def dashboard():
 
     director_counter = Counter()
     actor_counter = Counter()
-    for person_id, role in db.session.query(EntryPerson.person_id, EntryPerson.role):
-        (director_counter if role == "director" else actor_counter)[person_id] += 1
+    actor_characters = defaultdict(set)
+    for person_id, role, character in db.session.query(EntryPerson.person_id, EntryPerson.role, EntryPerson.character):
+        if role == "director":
+            director_counter[person_id] += 1
+        else:
+            actor_counter[person_id] += 1
+            if character:
+                actor_characters[person_id].add(character.strip().lower())
+    versatility_counter = Counter({pid: len(chars) for pid, chars in actor_characters.items()})
+    actor_metric = "characters" if request.args.get("actors") == "characters" else "appearances"
 
     series_with_seasons = sorted(
         ((e.title, len(e.seasons)) for e in entries if e.seasons),
@@ -489,8 +523,9 @@ def dashboard():
         total_seasons_series=len(series_with_seasons),
         oldest=min(years) if years else None,
         newest=max(years) if years else None,
-        top_directors=ranked_people(director_counter, 25),
-        top_actors=ranked_people(actor_counter, 25),
+        top_directors=ranked_people(director_counter, 40),
+        top_actors=ranked_people(versatility_counter if actor_metric == "characters" else actor_counter, 40),
+        actor_metric=actor_metric,
         top_genres=ranked_with_pct(genre_counter, 10),
         top_platforms=ranked_with_pct(platform_counter, 8),
         by_type=ranked_with_pct(type_counter, 10),
@@ -936,7 +971,7 @@ def apply_enrichment(json_path):
             person.wikidata_qid = rec["wikidata_qid"]
         if rec.get("photo_url"):
             try:
-                person.photo = download_poster(rec["photo_url"], f"person_{person.id}")
+                person.photo = download_poster(rec["photo_url"], f"person_{person.id}", max_dim=PERSON_PHOTO_DIM)
                 person.photo_source = rec.get("photo_source") or "tmdb"
                 person.photo_ref = rec.get("photo_ref")
                 photos += 1
@@ -965,7 +1000,7 @@ def add_person(name, birth, death, nationality, photo_url):
         person.nationality = nationality.strip()
     if photo_url:
         try:
-            person.photo = download_poster(photo_url, f"person_{person.id}")
+            person.photo = download_poster(photo_url, f"person_{person.id}", max_dim=PERSON_PHOTO_DIM)
             person.photo_source = "upload"
         except Exception as exc:
             click.echo(f"⚠️ No se pudo descargar la foto: {exc}")
@@ -984,7 +1019,7 @@ def set_person_photo(name, photo_url):
         click.echo(f"No existe la persona «{name}».")
         return
     try:
-        person.photo = download_poster(photo_url, f"person_{person.id}")
+        person.photo = download_poster(photo_url, f"person_{person.id}", max_dim=PERSON_PHOTO_DIM)
         person.photo_source = "upload"
         person.enriched_at = datetime.now()
         db.session.commit()

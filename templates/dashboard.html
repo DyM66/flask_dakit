@@ -27,30 +27,25 @@
 </div>
 {% endmacro %}
 
-{% macro peoplelist(title, items, color) %}
-<div class="card h-100 shadow-sm">
-    <div class="card-body">
-        <h2 class="h6 mb-3">{{ title }}</h2>
-        {% if items %}
-        {% for person, count, pct in items %}
-        <div class="mb-2">
-            <div class="d-flex justify-content-between align-items-center small">
-                <a href="{{ url_for('person_detail', person_id=person.id) }}" class="d-flex align-items-center gap-2 text-truncate text-decoration-none text-reset me-2">
-                    {{ avatar(person, 'avatar-xs rounded-circle flex-shrink-0') }}
-                    <span class="text-truncate">{{ person.name }}</span>
-                </a>
-                <span class="text-muted">{{ count }}</span>
-            </div>
-            <div class="progress dakit-bar">
-                <div class="progress-bar bg-{{ color }}" role="progressbar" data-pct="{{ pct }}"></div>
-            </div>
-        </div>
-        {% endfor %}
-        {% else %}
-        <p class="text-muted small mb-0">Sin datos.</p>
-        {% endif %}
+{% macro peoplerows(items, color) %}
+{% if items %}
+{% for person, count, pct in items %}
+<div class="mb-2">
+    <div class="d-flex justify-content-between align-items-center small">
+        <a href="{{ url_for('person_detail', person_id=person.id) }}" class="d-flex align-items-center gap-2 text-truncate text-decoration-none text-reset me-2">
+            {{ avatar(person, 'avatar-xs rounded-circle flex-shrink-0') }}
+            <span class="text-truncate">{{ person.name }}</span>
+        </a>
+        <span class="text-muted">{{ count }}</span>
+    </div>
+    <div class="progress dakit-bar">
+        <div class="progress-bar bg-{{ color }}" role="progressbar" data-pct="{{ pct }}"></div>
     </div>
 </div>
+{% endfor %}
+{% else %}
+<p class="text-muted small mb-0">Sin datos.</p>
+{% endif %}
 {% endmacro %}
 
 {% block content %}
@@ -71,8 +66,29 @@
 </div>
 
 <div class="row g-3">
-    <div class="col-12 col-lg-6">{{ peoplelist('🎬 Directores / autores más frecuentes', top_directors, 'primary') }}</div>
-    <div class="col-12 col-lg-6">{{ peoplelist('🌟 Actores que más has visto', top_actors, 'danger') }}</div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-3">🎬 Directores / autores más frecuentes</h2>
+                <div class="people-scroll">{{ peoplerows(top_directors, 'primary') }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+                    <h2 class="h6 mb-0">🌟 Actores</h2>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Métrica de actores">
+                        <a href="{{ url_for('dashboard', actors='appearances') }}" class="btn btn-outline-danger {% if actor_metric == 'appearances' %}active{% endif %}">Más vistos</a>
+                        <a href="{{ url_for('dashboard', actors='characters') }}" class="btn btn-outline-danger {% if actor_metric == 'characters' %}active{% endif %}">Más personajes</a>
+                    </div>
+                </div>
+                <p class="text-muted small mb-2">{% if actor_metric == 'characters' %}Por nº de personajes <strong>distintos</strong> que has visto interpretar (versatilidad).{% else %}Por nº de apariciones en tu biblioteca.{% endif %}</p>
+                <div class="people-scroll">{{ peoplerows(top_actors, 'danger') }}</div>
+            </div>
+        </div>
+    </div>
     <div class="col-12 col-lg-6">{{ barlist('🎭 Géneros más vistos', top_genres, 'success') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('📺 Plataformas más usadas', top_platforms, 'info') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('🗂️ Por tipo', by_type, 'warning') }}</div>
