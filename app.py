@@ -86,7 +86,9 @@ class Platform(db.Model):
 class Entry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
-    title_es = db.Column(db.String(200))
+    # Título alternativo oficial (inglés para anime, español para films en inglés, etc.).
+    # Mapeado a la columna existente "title_es" para no migrar el schema.
+    title_alt = db.Column("title_es", db.String(200))
     creator = db.Column(db.String(100), nullable=False)
     year = db.Column(db.Integer, nullable=False)
     platform = db.Column(db.String(50), nullable=False)
@@ -209,7 +211,7 @@ def index():
         entries = [
             e for e in entries
             if needle in normalize_text(e.title)
-            or needle in normalize_text(e.title_es)
+            or needle in normalize_text(e.title_alt)
             or needle in normalize_text(e.creator)
         ]
     types = [t for (t,) in db.session.query(Entry.type).distinct().order_by(Entry.type)]
@@ -277,7 +279,7 @@ def dashboard():
 def add():
     entry = Entry(
         title=request.form["title"],
-        title_es=request.form.get("title_es", "").strip() or None,
+        title_alt=request.form.get("title_alt", "").strip() or None,
         creator=request.form["creator"],
         year=request.form.get("year", type=int),
         platform=request.form["platform"],
@@ -301,7 +303,7 @@ def update(id):
     entry = db.get_or_404(Entry, id)
     if request.method == "POST":
         entry.title = request.form["title"]
-        entry.title_es = request.form.get("title_es", "").strip() or None
+        entry.title_alt = request.form.get("title_alt", "").strip() or None
         entry.creator = request.form["creator"]
         entry.year = request.form.get("year", type=int)
         entry.platform = request.form["platform"]
@@ -581,17 +583,17 @@ def seed_platforms():
 
 @app.cli.command("add-entry")
 @click.option("--title", required=True, help="Título original (principal).")
-@click.option("--title-es", "title_es", default="", help="Título en español (si difiere del original).")
+@click.option("--title-alt", "title_alt", default="", help="Título alternativo oficial (si difiere del original).")
 @click.option("--creator", required=True)
 @click.option("--year", required=True, type=int)
 @click.option("--platform", required=True)
 @click.option("--type", "type_", required=True)
 @click.option("--genres", default="", help="Nombres de géneros separados por coma.")
 @click.option("--image-url", default="", help="URL de un póster para descargar.")
-def add_entry(title, title_es, creator, year, platform, type_, genres, image_url):
+def add_entry(title, title_alt, creator, year, platform, type_, genres, image_url):
     """Registra una entrada en la biblioteca desde la línea de comandos."""
     entry = Entry(
-        title=title, title_es=title_es.strip() or None,
+        title=title, title_alt=title_alt.strip() or None,
         creator=creator, year=year, platform=platform, type=type_,
     )
     db.session.add(entry)

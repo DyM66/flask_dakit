@@ -15,8 +15,8 @@
                         <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label for="title_es" class="form-label">Título en español <span class="text-muted">(si difiere)</span></label>
-                        <input type="text" name="title_es" id="title_es" class="form-control" value="{{ entry.title_es or '' }}">
+                        <label for="title_alt" class="form-label">Título alternativo <span class="text-muted">(oficial, si difiere)</span></label>
+                        <input type="text" name="title_alt" id="title_alt" class="form-control" value="{{ entry.title_alt or '' }}">
                     </div>
                 </div>
                 <div class="mb-3">
