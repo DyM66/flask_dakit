@@ -9,9 +9,15 @@
 
             <form action="{{ url_for('update', id=entry.id) }}" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label for="title" class="form-label">Título</label>
-                    <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="title" class="form-label">Título original (principal)</label>
+                        <input type="text" name="title" id="title" class="form-control" value="{{ entry.title }}" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="title_es" class="form-label">Título en español <span class="text-muted">(si difiere)</span></label>
+                        <input type="text" name="title_es" id="title_es" class="form-control" value="{{ entry.title_es or '' }}">
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label for="creator" class="form-label">Autor / Director</label>

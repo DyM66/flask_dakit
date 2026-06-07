@@ -1,4 +1,5 @@
 import os
+import unicodedata
 from collections import Counter
 from datetime import date
 
@@ -15,7 +16,6 @@ from flask_login import (
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
-from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -86,6 +86,7 @@ class Platform(db.Model):
 class Entry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
+    title_es = db.Column(db.String(200))
     creator = db.Column(db.String(100), nullable=False)
     year = db.Column(db.Integer, nullable=False)
     platform = db.Column(db.String(50), nullable=False)
@@ -130,6 +131,12 @@ def load_user(user_id):
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in app.config["ALLOWED_EXTENSIONS"]
+
+
+def normalize_text(value):
+    """Minúsculas y sin acentos, para búsquedas tolerantes."""
+    text = unicodedata.normalize("NFKD", value or "")
+    return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
 def save_image(file):
@@ -191,15 +198,20 @@ def index():
     year_filter = request.args.get("year", type=int)
 
     query = Entry.query
-    if q:
-        like = f"%{q}%"
-        query = query.filter(or_(Entry.title.ilike(like), Entry.creator.ilike(like)))
     if type_filter:
         query = query.filter(Entry.type == type_filter)
     if year_filter:
         query = query.filter(Entry.year == year_filter)
-
     entries = query.order_by(Entry.title).all()
+
+    if q:
+        needle = normalize_text(q)
+        entries = [
+            e for e in entries
+            if needle in normalize_text(e.title)
+            or needle in normalize_text(e.title_es)
+            or needle in normalize_text(e.creator)
+        ]
     types = [t for (t,) in db.session.query(Entry.type).distinct().order_by(Entry.type)]
     years = [y for (y,) in db.session.query(Entry.year).distinct().order_by(Entry.year.desc())]
     return render_template(
@@ -265,6 +277,7 @@ def dashboard():
 def add():
     entry = Entry(
         title=request.form["title"],
+        title_es=request.form.get("title_es", "").strip() or None,
         creator=request.form["creator"],
         year=request.form.get("year", type=int),
         platform=request.form["platform"],
@@ -288,6 +301,7 @@ def update(id):
     entry = db.get_or_404(Entry, id)
     if request.method == "POST":
         entry.title = request.form["title"]
+        entry.title_es = request.form.get("title_es", "").strip() or None
         entry.creator = request.form["creator"]
         entry.year = request.form.get("year", type=int)
         entry.platform = request.form["platform"]
@@ -566,16 +580,20 @@ def seed_platforms():
 
 
 @app.cli.command("add-entry")
-@click.option("--title", required=True)
+@click.option("--title", required=True, help="Título original (principal).")
+@click.option("--title-es", "title_es", default="", help="Título en español (si difiere del original).")
 @click.option("--creator", required=True)
 @click.option("--year", required=True, type=int)
 @click.option("--platform", required=True)
 @click.option("--type", "type_", required=True)
 @click.option("--genres", default="", help="Nombres de géneros separados por coma.")
 @click.option("--image-url", default="", help="URL de un póster para descargar.")
-def add_entry(title, creator, year, platform, type_, genres, image_url):
+def add_entry(title, title_es, creator, year, platform, type_, genres, image_url):
     """Registra una entrada en la biblioteca desde la línea de comandos."""
-    entry = Entry(title=title, creator=creator, year=year, platform=platform, type=type_)
+    entry = Entry(
+        title=title, title_es=title_es.strip() or None,
+        creator=creator, year=year, platform=platform, type=type_,
+    )
     db.session.add(entry)
 
     linked = []

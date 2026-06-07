@@ -82,8 +82,12 @@
             <form action="{{ url_for('add') }}" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
-                    <label for="title" class="form-label">Título</label>
+                    <label for="title" class="form-label">Título original (principal)</label>
                     <input type="text" name="title" id="title" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label for="title_es" class="form-label">Título en español <span class="text-muted">(si difiere)</span></label>
+                    <input type="text" name="title_es" id="title_es" class="form-control">
                 </div>
                 <div class="mb-3">
                     <label for="creator" class="form-label">Autor / Director</label>

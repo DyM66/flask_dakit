@@ -39,8 +39,11 @@
             <div class="card h-100 shadow-sm">
                 <img src="{{ url_for('static', filename='uploads/' + entry.image) if entry.image else url_for('static', filename='default.jpg') }}" class="card-img-top poster" alt="{{ entry.title }}">
                 <div class="card-body p-2 d-flex flex-column">
-                    <h6 class="card-title mb-1">{{ entry.title }}</h6>
-                    <p class="card-text small mb-1">{{ entry.creator }}</p>
+                    <h6 class="card-title mb-0">{{ entry.title }}</h6>
+                    {% if entry.title_es and entry.title_es != entry.title %}
+                    <div class="card-text small text-muted fst-italic mb-1">{{ entry.title_es }}</div>
+                    {% endif %}
+                    <p class="card-text small mb-1 mt-1">{{ entry.creator }}</p>
                     <p class="card-text small text-muted mb-2">{{ entry.year }} · {{ entry.type }}</p>
                     <div class="mt-auto">
                         <div class="d-flex flex-wrap gap-1">
