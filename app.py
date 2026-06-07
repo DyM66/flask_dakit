@@ -212,6 +212,7 @@ def index():
             if needle in normalize_text(e.title)
             or needle in normalize_text(e.title_alt)
             or needle in normalize_text(e.creator)
+            or needle in normalize_text(e.main_cast)
         ]
     types = [t for (t,) in db.session.query(Entry.type).distinct().order_by(Entry.type)]
     years = [y for (y,) in db.session.query(Entry.year).distinct().order_by(Entry.year.desc())]
