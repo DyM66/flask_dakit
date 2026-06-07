@@ -97,8 +97,6 @@ class Entry(db.Model):
     # Título alternativo oficial (inglés para anime, español para films en inglés, etc.).
     # Mapeado a la columna existente "title_es" para no migrar el schema.
     title_alt = db.Column("title_es", db.String(200))
-    creator = db.Column(db.String(100), nullable=False)
-    main_cast = db.Column(db.String(500))  # reparto principal: nombres separados por coma
     year = db.Column(db.Integer, nullable=False)
     platform = db.Column(db.String(50), nullable=False)
     type = db.Column(db.String(20), nullable=False)
@@ -260,6 +258,55 @@ def get_or_create_person(name):
     return person, True
 
 
+def sync_entry_people(entry, creator_csv, cast_csv):
+    """Reemplaza los enlaces de la entrada según los CSV del form (find-or-create)."""
+    entry.people.clear()
+    db.session.flush()  # ejecuta los DELETE de enlaces viejos antes de re-insertar
+    seen = set()
+    for csv, role in ((creator_csv, "director"), (cast_csv, "actor")):
+        for raw in (csv or "").split(","):
+            person, _ = get_or_create_person(raw)
+            if not person or (person.id, role) in seen:
+                continue
+            seen.add((person.id, role))
+            entry.people.append(EntryPerson(person=person, role=role))
+
+
+def ranked_people(counter, limit):
+    """Counter[person_id] → [(Person, count, pct_vs_top)] para barras con avatar."""
+    items = counter.most_common(limit)
+    if not items:
+        return []
+    top = items[0][1]
+    people = {p.id: p for p in Person.query.filter(Person.id.in_([pid for pid, _ in items]))}
+    return [(people[pid], count, round(count / top * 100)) for pid, count in items]
+
+
+def save_person_photo(person):
+    """Guarda la foto (URL o archivo) como person_{id}.{ext} y borra la anterior si cambia."""
+    old, new = person.photo, None
+    url = request.form.get("photo_url", "").strip()
+    if url:
+        try:
+            new = download_poster(url, f"person_{person.id}")
+        except Exception as exc:
+            flash(f"No se pudo descargar la foto: {exc}", "danger")
+            return
+    else:
+        file = request.files.get("photo")
+        if file and file.filename and allowed_file(file.filename):
+            ext = os.path.splitext(file.filename)[1].lower() or ".jpg"
+            new = secure_filename(f"person_{person.id}{ext}")
+            file.save(os.path.join(app.config["UPLOAD_FOLDER"], new))
+    if new:
+        if old and old != new:
+            old_path = os.path.join(app.config["UPLOAD_FOLDER"], old)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        person.photo = new
+        person.photo_source = "upload"
+
+
 def send_email(to, subject, body):
     if not app.config.get("MAIL_HOST"):
         raise RuntimeError("El envío de correo no está configurado.")
@@ -351,7 +398,7 @@ def index():
     type_filter = request.args.get("type", "").strip()
     year_filter = request.args.get("year", type=int)
 
-    query = Entry.query
+    query = Entry.query.options(joinedload(Entry.people).joinedload(EntryPerson.person))
     if type_filter:
         query = query.filter(Entry.type == type_filter)
     if year_filter:
@@ -364,8 +411,8 @@ def index():
             e for e in entries
             if needle in normalize_text(e.title)
             or needle in normalize_text(e.title_alt)
-            or needle in normalize_text(e.creator)
-            or needle in normalize_text(e.main_cast)
+            or needle in normalize_text(e.creator_csv)
+            or needle in normalize_text(e.cast_csv)
         ]
     types = [t for (t,) in db.session.query(Entry.type).distinct().order_by(Entry.type)]
     years = [y for (y,) in db.session.query(Entry.year).distinct().order_by(Entry.year.desc())]
@@ -386,8 +433,6 @@ def dashboard():
 
     type_counter = Counter()
     platform_counter = Counter()
-    director_counter = Counter()
-    actor_counter = Counter()
     genre_counter = Counter()
     decade_counter = Counter()
     years = []
@@ -396,19 +441,16 @@ def dashboard():
         type_counter[entry.type] += 1
         if entry.platform:
             platform_counter[entry.platform] += 1
-        for name in (entry.creator or "").split(","):
-            name = name.strip()
-            if name:
-                director_counter[name] += 1
-        for name in (entry.main_cast or "").split(","):
-            name = name.strip()
-            if name:
-                actor_counter[name] += 1
         for genre in entry.genres:
             genre_counter[genre.name] += 1
         if entry.year:
             years.append(entry.year)
             decade_counter[(entry.year // 10) * 10] += 1
+
+    director_counter = Counter()
+    actor_counter = Counter()
+    for person_id, role in db.session.query(EntryPerson.person_id, EntryPerson.role):
+        (director_counter if role == "director" else actor_counter)[person_id] += 1
 
     series_with_seasons = sorted(
         ((e.title, len(e.seasons)) for e in entries if e.seasons),
@@ -423,8 +465,8 @@ def dashboard():
         total_seasons_series=len(series_with_seasons),
         oldest=min(years) if years else None,
         newest=max(years) if years else None,
-        top_directors=ranked_with_pct(director_counter, 25),
-        top_actors=ranked_with_pct(actor_counter, 25),
+        top_directors=ranked_people(director_counter, 25),
+        top_actors=ranked_people(actor_counter, 25),
         top_genres=ranked_with_pct(genre_counter, 10),
         top_platforms=ranked_with_pct(platform_counter, 8),
         by_type=ranked_with_pct(type_counter, 10),
@@ -441,8 +483,6 @@ def add():
     entry = Entry(
         title=request.form["title"],
         title_alt=request.form.get("title_alt", "").strip() or None,
-        creator=request.form["creator"],
-        main_cast=request.form.get("main_cast", "").strip() or None,
         year=request.form.get("year", type=int),
         platform=request.form["platform"],
         type=request.form["type"],
@@ -451,6 +491,7 @@ def add():
     entry.genres = selected_genres()
     try:
         db.session.add(entry)
+        sync_entry_people(entry, request.form.get("creator", ""), request.form.get("main_cast", ""))
         db.session.commit()
         flash(f"«{entry.title}» agregado a la biblioteca.", "success")
     except Exception:
@@ -466,12 +507,11 @@ def update(id):
     if request.method == "POST":
         entry.title = request.form["title"]
         entry.title_alt = request.form.get("title_alt", "").strip() or None
-        entry.creator = request.form["creator"]
-        entry.main_cast = request.form.get("main_cast", "").strip() or None
         entry.year = request.form.get("year", type=int)
         entry.platform = request.form["platform"]
         entry.type = request.form["type"]
         entry.genres = selected_genres()
+        sync_entry_people(entry, request.form.get("creator", ""), request.form.get("main_cast", ""))
         new_image = save_image(request.files.get("image"))
         if new_image:
             entry.image = new_image
@@ -644,6 +684,49 @@ def delete_platform(id):
     return redirect(url_for("platforms"))
 
 
+# ─────────────────────────────── Personas ──────────────────────────────
+
+@app.route("/people")
+@login_required
+def people_list():
+    people = Person.query.options(joinedload(Person.links)).order_by(Person.name).all()
+    return render_template("people.html", people=people)
+
+
+@app.route("/person/<int:person_id>")
+@login_required
+def person_detail(person_id):
+    person = db.get_or_404(Person, person_id)
+    return render_template("person.html", person=person)
+
+
+@app.route("/person/<int:person_id>/edit", methods=["POST"])
+@login_required
+def person_edit(person_id):
+    person = db.get_or_404(Person, person_id)
+    save_person_photo(person)
+    person.birth_date = parse_date(request.form.get("birth_date"))
+    person.death_date = parse_date(request.form.get("death_date"))
+    person.nationality = request.form.get("nationality", "").strip() or None
+    db.session.commit()
+    flash("Ficha actualizada.", "success")
+    return redirect(url_for("person_detail", person_id=person.id))
+
+
+@app.route("/person/<int:person_id>/delete", methods=["POST"])
+@login_required
+def person_delete(person_id):
+    person = db.get_or_404(Person, person_id)
+    if person.photo:
+        photo_path = os.path.join(app.config["UPLOAD_FOLDER"], person.photo)
+        if os.path.exists(photo_path):
+            os.remove(photo_path)
+    db.session.delete(person)  # cascade limpia sus enlaces EntryPerson
+    db.session.commit()
+    flash(f"«{person.name}» eliminada.", "info")
+    return redirect(url_for("people_list"))
+
+
 # ───────────────────────────── Autenticación ───────────────────────────
 
 @app.route("/login", methods=["GET", "POST"])
@@ -799,41 +882,89 @@ def init_db():
     click.echo("Esquema verificado: tablas creadas/actualizadas.")
 
 
-@app.cli.command("migrate-people")
-@click.option("--check", is_flag=True, help="Solo audita (no escribe): reporta nombres CSV sin Person/enlace.")
-def migrate_people(check):
-    """Convierte Entry.creator/main_cast (CSV) en Person + EntryPerson. Idempotente."""
-    created_people = linked = 0
-    missing = []
-    for entry in Entry.query.all():
-        for csv, role in ((entry.creator, "director"), (entry.main_cast, "actor")):
-            for raw in (csv or "").split(","):
-                name = raw.strip()
-                if not name:
-                    continue
-                if check:
-                    person = Person.query.filter_by(normalized_name=normalize_text(name)).first()
-                    if not person or not EntryPerson.query.filter_by(
-                        entry_id=entry.id, person_id=person.id, role=role
-                    ).first():
-                        missing.append((entry.id, name, role))
-                    continue
-                person, created = get_or_create_person(name)
-                created_people += int(created)
-                if not EntryPerson.query.filter_by(
-                    entry_id=entry.id, person_id=person.id, role=role
-                ).first():
-                    db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role))
-                    linked += 1
-    if check:
-        for eid, name, role in missing:
-            click.echo(f"FALTA: entry {eid} · {name} · {role}")
-        if missing:
-            raise click.ClickException(f"{len(missing)} enlaces faltantes — NO continuar.")
-        click.echo(f"Auditoría OK: {Person.query.count()} personas, {EntryPerson.query.count()} enlaces. Todos los nombres CSV cubiertos.")
-        return
+@app.cli.command("apply-enrichment")
+@click.argument("json_path")
+def apply_enrichment(json_path):
+    """Aplica datos investigados (foto/nacimiento/nacionalidad) a las personas desde un JSON.
+
+    Cada item: {name|normalized_name, birth_date, death_date, nationality,
+    photo_url, photo_source, tmdb_id, wikidata_qid}. Idempotente; solo escribe lo provisto.
+    """
+    import json
+    with open(json_path, encoding="utf-8") as handle:
+        records = json.load(handle)
+    updated = photos = 0
+    for rec in records:
+        norm = normalize_text(rec.get("name") or rec.get("normalized_name") or "")
+        person = Person.query.filter_by(normalized_name=norm).first()
+        if not person:
+            click.echo(f"  (sin match: {rec.get('name')})")
+            continue
+        if rec.get("birth_date"):
+            person.birth_date = parse_date(rec["birth_date"])
+        if rec.get("death_date"):
+            person.death_date = parse_date(rec["death_date"])
+        if rec.get("nationality"):
+            person.nationality = rec["nationality"].strip()
+        if rec.get("tmdb_id"):
+            person.tmdb_id = rec["tmdb_id"]
+        if rec.get("wikidata_qid"):
+            person.wikidata_qid = rec["wikidata_qid"]
+        if rec.get("photo_url"):
+            try:
+                person.photo = download_poster(rec["photo_url"], f"person_{person.id}")
+                person.photo_source = rec.get("photo_source") or "tmdb"
+                person.photo_ref = rec.get("photo_ref")
+                photos += 1
+            except Exception as exc:
+                click.echo(f"  ⚠️ foto {person.name}: {exc}")
+        person.enriched_at = datetime.now()
+        updated += 1
     db.session.commit()
-    click.echo(f"Personas nuevas: {created_people}. Enlaces nuevos: {linked}. Total: {Person.query.count()} personas, {EntryPerson.query.count()} enlaces.")
+    click.echo(f"Enriquecidas: {updated} personas, {photos} fotos descargadas.")
+
+
+@app.cli.command("add-person")
+@click.option("--name", required=True)
+@click.option("--birth", default="", help="Nacimiento YYYY-MM-DD.")
+@click.option("--death", default="", help="Fallecimiento YYYY-MM-DD (vacío = vive).")
+@click.option("--nationality", default="")
+@click.option("--photo-url", "photo_url", default="", help="URL de la foto (se descarga).")
+def add_person(name, birth, death, nationality, photo_url):
+    """Crea o actualiza una persona (find-or-create por nombre normalizado)."""
+    person, created = get_or_create_person(name)
+    if birth:
+        person.birth_date = parse_date(birth)
+    if death:
+        person.death_date = parse_date(death)
+    if nationality:
+        person.nationality = nationality.strip()
+    if photo_url:
+        try:
+            person.photo = download_poster(photo_url, f"person_{person.id}")
+            person.photo_source = "upload"
+        except Exception as exc:
+            click.echo(f"⚠️ No se pudo descargar la foto: {exc}")
+    db.session.commit()
+    click.echo(f"Persona «{person.name}» {'creada' if created else 'actualizada'}.")
+
+
+@app.cli.command("set-person-photo")
+@click.option("--name", required=True)
+@click.option("--photo-url", "photo_url", required=True)
+def set_person_photo(name, photo_url):
+    """Descarga y asigna la foto de una persona existente."""
+    person = Person.query.filter_by(normalized_name=normalize_text(name)).first()
+    if not person:
+        click.echo(f"No existe la persona «{name}».")
+        return
+    try:
+        person.photo = download_poster(photo_url, f"person_{person.id}")
+        person.photo_source = "upload"
+        db.session.commit()
+        click.echo(f"Foto de «{person.name}» actualizada.")
+    except Exception as exc:
+        click.echo(f"⚠️ No se pudo descargar la foto: {exc}")
 
 
 PLATFORM_SEED = [
@@ -873,10 +1004,10 @@ def add_entry(title, title_alt, creator, main_cast, year, platform, type_, genre
     """Registra una entrada en la biblioteca desde la línea de comandos."""
     entry = Entry(
         title=title, title_alt=title_alt.strip() or None,
-        creator=creator, main_cast=main_cast.strip() or None,
         year=year, platform=platform, type=type_,
     )
     db.session.add(entry)
+    sync_entry_people(entry, creator, main_cast)
 
     linked = []
     for name in (g.strip() for g in genres.split(",") if g.strip()):

@@ -2,6 +2,8 @@
 
 {% block title %}Dakit - Dashboard{% endblock %}
 
+{% from '_avatar.html' import avatar %}
+
 {% macro barlist(title, items, color) %}
 <div class="card h-100 shadow-sm">
     <div class="card-body">
@@ -11,6 +13,32 @@
         <div class="mb-2">
             <div class="d-flex justify-content-between small">
                 <span class="text-truncate me-2">{{ name }}</span>
+                <span class="text-muted">{{ count }}</span>
+            </div>
+            <div class="progress dakit-bar">
+                <div class="progress-bar bg-{{ color }}" role="progressbar" data-pct="{{ pct }}"></div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-0">Sin datos.</p>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro peoplelist(title, items, color) %}
+<div class="card h-100 shadow-sm">
+    <div class="card-body">
+        <h2 class="h6 mb-3">{{ title }}</h2>
+        {% if items %}
+        {% for person, count, pct in items %}
+        <div class="mb-2">
+            <div class="d-flex justify-content-between align-items-center small">
+                <a href="{{ url_for('person_detail', person_id=person.id) }}" class="d-flex align-items-center gap-2 text-truncate text-decoration-none text-reset me-2">
+                    {{ avatar(person, 'avatar-xs rounded-circle flex-shrink-0') }}
+                    <span class="text-truncate">{{ person.name }}</span>
+                </a>
                 <span class="text-muted">{{ count }}</span>
             </div>
             <div class="progress dakit-bar">
@@ -43,8 +71,8 @@
 </div>
 
 <div class="row g-3">
-    <div class="col-12 col-lg-6">{{ barlist('🎬 Directores / autores más frecuentes', top_directors, 'primary') }}</div>
-    <div class="col-12 col-lg-6">{{ barlist('🌟 Actores que más has visto', top_actors, 'danger') }}</div>
+    <div class="col-12 col-lg-6">{{ peoplelist('🎬 Directores / autores más frecuentes', top_directors, 'primary') }}</div>
+    <div class="col-12 col-lg-6">{{ peoplelist('🌟 Actores que más has visto', top_actors, 'danger') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('🎭 Géneros más vistos', top_genres, 'success') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('📺 Plataformas más usadas', top_platforms, 'info') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('🗂️ Por tipo', by_type, 'warning') }}</div>

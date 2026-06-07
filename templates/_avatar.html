@@ -1,0 +1,7 @@
+{% macro avatar(person, cls) %}
+{% if person.photo %}
+<img src="{{ url_for('static', filename='uploads/' + person.photo) }}" class="{{ cls }}" alt="{{ person.name }}" loading="lazy">
+{% else %}
+<span class="avatar-ph d-inline-flex align-items-center justify-content-center {{ cls }}"><i class="bi bi-person"></i></span>
+{% endif %}
+{% endmacro %}

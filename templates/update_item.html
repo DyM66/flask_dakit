@@ -20,12 +20,12 @@
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label for="creator" class="form-label">Autor / Director</label>
-                    <input type="text" name="creator" id="creator" class="form-control" value="{{ entry.creator }}" required>
+                    <label for="creator" class="form-label">Autor / Director <span class="text-muted">(separados por coma)</span></label>
+                    <input type="text" name="creator" id="creator" class="form-control" value="{{ entry.creator_csv }}" required>
                 </div>
                 <div class="mb-3">
                     <label for="main_cast" class="form-label">Reparto principal <span class="text-muted">(actores, separados por coma)</span></label>
-                    <input type="text" name="main_cast" id="main_cast" class="form-control" value="{{ entry.main_cast or '' }}" placeholder="Ej. Robert Downey Jr., Scarlett Johansson">
+                    <input type="text" name="main_cast" id="main_cast" class="form-control" value="{{ entry.cast_csv }}" placeholder="Ej. Robert Downey Jr., Scarlett Johansson">
                 </div>
                 <div class="row">
                     <div class="col-md-4 mb-3">

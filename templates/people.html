@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% from '_avatar.html' import avatar %}
+
+{% block title %}Dakit - Personas{% endblock %}
+
+{% block content %}
+    <div class="mb-4">
+        <h1 class="h3 mb-0">Personas</h1>
+        <small class="text-muted">{{ people|length }} persona{{ '' if people|length == 1 else 's' }} entre directores, autores y reparto</small>
+    </div>
+
+    {% if people %}
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-xl-6 g-3">
+        {% for person in people %}
+        <div class="col">
+            <a href="{{ url_for('person_detail', person_id=person.id) }}" class="text-decoration-none text-reset">
+                <div class="card h-100 shadow-sm text-center">
+                    <div class="card-body p-2 d-flex flex-column align-items-center">
+                        {{ avatar(person, 'avatar-sm rounded-circle mb-2') }}
+                        <div class="small fw-semibold text-truncate w-100">{{ person.name }}</div>
+                        <div class="mt-auto pt-1">
+                            <span class="badge text-bg-secondary fw-normal">{{ person.links|length }} obra{{ '' if person.links|length == 1 else 's' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+        <p class="mb-0">Aún no hay personas registradas.</p>
+    </div>
+    {% endif %}
+{% endblock %}

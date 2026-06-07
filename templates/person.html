@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+
+{% block title %}Dakit - {{ person.name }}{% endblock %}
+
+{% macro worksgrid(entries) %}
+<div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 g-2 mb-3">
+    {% for entry in entries %}
+    <div class="col">
+        <a href="{{ url_for('index', q=entry.title) }}" class="text-decoration-none text-reset">
+            <div class="card h-100 shadow-sm">
+                {% if entry.image %}
+                <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" class="card-img-top work-poster" alt="{{ entry.title }}" loading="lazy">
+                {% else %}
+                <div class="card-img-top work-poster d-flex align-items-center justify-content-center fs-2">🎬</div>
+                {% endif %}
+                <div class="card-body p-2">
+                    <div class="small fw-semibold text-truncate">{{ entry.title }}</div>
+                    <div class="small text-muted">{{ entry.year }} · {{ entry.type }}</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-9">
+        <a href="{{ url_for('people_list') }}" class="btn btn-link px-0 mb-2">← Personas</a>
+
+        <div class="d-flex gap-3 mb-4 flex-wrap">
+            {% if person.photo %}
+            <img src="{{ url_for('static', filename='uploads/' + person.photo) }}" class="rounded person-photo" alt="{{ person.name }}">
+            {% else %}
+            <span class="rounded person-photo avatar-ph d-inline-flex align-items-center justify-content-center fs-1"><i class="bi bi-person"></i></span>
+            {% endif %}
+            <div>
+                <h1 class="h3 mb-1">{{ person.name }}</h1>
+                <div class="mb-2">
+                    {% if person.age is not none %}<span class="me-2">{{ person.age }} años{% if not person.is_alive %} al fallecer{% endif %}</span>{% endif %}
+                    {% if person.is_alive %}<span class="badge text-bg-success">Vive</span>{% else %}<span class="badge text-bg-secondary">✝ {{ person.death_date.year }}</span>{% endif %}
+                </div>
+                <dl class="row small mb-0">
+                    {% if person.birth_date %}<dt class="col-4 col-sm-3 text-muted fw-normal">Nacimiento</dt><dd class="col-8 col-sm-9">{{ person.birth_date.strftime('%d/%m/%Y') }}</dd>{% endif %}
+                    {% if person.nationality %}<dt class="col-4 col-sm-3 text-muted fw-normal">Nacionalidad</dt><dd class="col-8 col-sm-9">{{ person.nationality }}</dd>{% endif %}
+                </dl>
+                {% if not person.birth_date and not person.nationality %}
+                <p class="text-muted small fst-italic mb-0">Ficha sin completar — se llenará al registrar sus obras, o edítala abajo.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if person.entries_as_director %}
+        <h2 class="h5 border-top pt-3">Dirección / Autoría <span class="text-muted fs-6">({{ person.entries_as_director|length }})</span></h2>
+        {{ worksgrid(person.entries_as_director) }}
+        {% endif %}
+
+        {% if person.entries_as_actor %}
+        <h2 class="h5 border-top pt-3">Reparto <span class="text-muted fs-6">({{ person.entries_as_actor|length }})</span></h2>
+        {{ worksgrid(person.entries_as_actor) }}
+        {% endif %}
+
+        <details class="mt-4">
+            <summary class="text-muted small">Editar ficha (foto, fechas, nacionalidad)</summary>
+            <form action="{{ url_for('person_edit', person_id=person.id) }}" method="POST" enctype="multipart/form-data" class="row g-2 mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-12 col-md-6">
+                    <label for="photo_url" class="form-label small mb-0">Foto (URL)</label>
+                    <input type="text" name="photo_url" id="photo_url" class="form-control form-control-sm" placeholder="https://...jpg">
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="photo" class="form-label small mb-0">o archivo</label>
+                    <input type="file" name="photo" id="photo" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="birth_date" class="form-label small mb-0">Nacimiento</label>
+                    <input type="date" name="birth_date" id="birth_date" class="form-control form-control-sm" value="{{ person.birth_date.isoformat() if person.birth_date else '' }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="death_date" class="form-label small mb-0">Fallecimiento</label>
+                    <input type="date" name="death_date" id="death_date" class="form-control form-control-sm" value="{{ person.death_date.isoformat() if person.death_date else '' }}">
+                </div>
+                <div class="col-12 col-md-4">
+                    <label for="nationality" class="form-label small mb-0">Nacionalidad</label>
+                    <input type="text" name="nationality" id="nationality" class="form-control form-control-sm" value="{{ person.nationality or '' }}">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-sm btn-success">Guardar ficha</button>
+                </div>
+            </form>
+            <form action="{{ url_for('person_delete', person_id=person.id) }}" method="POST" class="mt-2" onsubmit="return confirm('¿Eliminar a {{ person.name }}? Se quitará de todas sus obras.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-link text-danger p-0">Eliminar persona</button>
+            </form>
+        </details>
+    </div>
+</div>
+{% endblock %}
