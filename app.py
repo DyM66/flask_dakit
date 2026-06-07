@@ -160,6 +160,18 @@ def selected_genres():
     return Genre.query.filter(Genre.id.in_(ids)).all()
 
 
+def resolve_poster(basename):
+    """Obtiene el póster del form: descarga si hay image_url, o guarda el archivo subido."""
+    image_url = request.form.get("image_url", "").strip()
+    if image_url:
+        try:
+            return download_poster(image_url, basename)
+        except Exception as exc:
+            flash(f"No se pudo descargar el póster: {exc}", "danger")
+            return None
+    return save_image(request.files.get("image"))
+
+
 # ─────────────────────────────── Catálogo ──────────────────────────────
 
 @app.route("/")
@@ -260,13 +272,14 @@ def delete(id):
 @login_required
 def add_season(id):
     entry = db.get_or_404(Entry, id)
+    number = request.form.get("number", type=int)
     season = Season(
         entry_id=entry.id,
-        number=request.form.get("number", type=int),
+        number=number,
         name=request.form.get("name", "").strip() or None,
         year=request.form.get("year", type=int),
         director=request.form.get("director", "").strip() or None,
-        image=save_image(request.files.get("image")),
+        image=resolve_poster(f"{entry.title}_T{number}"),
     )
     try:
         db.session.add(season)
@@ -276,6 +289,26 @@ def add_season(id):
         db.session.rollback()
         flash("No se pudo agregar la temporada.", "danger")
     return redirect(url_for("update", id=entry.id))
+
+
+@app.route("/seasons/edit/<int:id>", methods=["POST"])
+@login_required
+def edit_season(id):
+    season = db.get_or_404(Season, id)
+    season.number = request.form.get("number", type=int)
+    season.year = request.form.get("year", type=int)
+    season.name = request.form.get("name", "").strip() or None
+    season.director = request.form.get("director", "").strip() or None
+    new_image = resolve_poster(f"{season.entry.title}_T{season.number}")
+    if new_image:
+        season.image = new_image
+    try:
+        db.session.commit()
+        flash(f"Temporada {season.number} actualizada.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo actualizar la temporada.", "danger")
+    return redirect(url_for("update", id=season.entry_id))
 
 
 @app.route("/seasons/delete/<int:id>", methods=["POST"])

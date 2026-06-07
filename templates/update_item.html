@@ -75,29 +75,63 @@
             <p class="text-muted small">Desglosa la serie por temporadas (cada una puede tener su año, director y póster). Solo registra las que has visto.</p>
 
             {% if entry.seasons %}
-            <ul class="list-group mb-3">
+            <div class="mb-4">
                 {% for season in entry.seasons %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <span>Temporada {{ season.number }}{% if season.name %}: {{ season.name }}{% endif %}
-                        <span class="text-muted small">({% if season.year %}{{ season.year }}{% endif %}{% if season.director %} · {{ season.director }}{% endif %})</span>
-                    </span>
-                    <form action="{{ url_for('delete_season', id=season.id) }}" method="POST" onsubmit="return confirm('¿Eliminar la temporada {{ season.number }}?');">
+                <div class="border rounded p-2 mb-2">
+                    <form action="{{ url_for('edit_season', id=season.id) }}" method="POST" enctype="multipart/form-data" class="row g-2 align-items-end">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                        {% if season.image %}
+                        <div class="col-auto">
+                            <img src="{{ url_for('static', filename='uploads/' + season.image) }}" class="rounded season-thumb" alt="T{{ season.number }}">
+                        </div>
+                        {% endif %}
+                        <div class="col-3 col-md-1">
+                            <label class="form-label small mb-0">N°</label>
+                            <input type="number" name="number" class="form-control form-control-sm" value="{{ season.number }}" required>
+                        </div>
+                        <div class="col-4 col-md-2">
+                            <label class="form-label small mb-0">Año</label>
+                            <input type="number" name="year" class="form-control form-control-sm" value="{{ season.year or '' }}">
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label small mb-0">Subtítulo</label>
+                            <input type="text" name="name" class="form-control form-control-sm" value="{{ season.name or '' }}">
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label small mb-0">Director</label>
+                            <input type="text" name="director" class="form-control form-control-sm" value="{{ season.director or '' }}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small mb-0">Nuevo póster (archivo)</label>
+                            <input type="file" name="image" class="form-control form-control-sm" accept="image/*">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small mb-0">o URL de póster</label>
+                            <input type="text" name="image_url" class="form-control form-control-sm" placeholder="https://...jpg">
+                        </div>
+                        <div class="col-12 col-md-2 d-grid">
+                            <button type="submit" class="btn btn-sm btn-primary">Guardar</button>
+                        </div>
                     </form>
-                </li>
+                    <form action="{{ url_for('delete_season', id=season.id) }}" method="POST" class="mt-1" onsubmit="return confirm('¿Eliminar la temporada {{ season.number }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-link text-danger p-0">Eliminar temporada</button>
+                    </form>
+                </div>
                 {% endfor %}
-            </ul>
+            </div>
             {% endif %}
 
+            <h3 class="h6 mb-2">Agregar temporada</h3>
             <form action="{{ url_for('add_season', id=entry.id) }}" method="POST" enctype="multipart/form-data" class="row g-2">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="col-4 col-md-2"><input type="number" name="number" class="form-control" placeholder="N°" required></div>
+                <div class="col-3 col-md-1"><input type="number" name="number" class="form-control" placeholder="N°" required></div>
                 <div class="col-4 col-md-2"><input type="number" name="year" class="form-control" placeholder="Año"></div>
-                <div class="col-12 col-md-4"><input type="text" name="name" class="form-control" placeholder="Subtítulo (opcional)"></div>
-                <div class="col-12 col-md-4"><input type="text" name="director" class="form-control" placeholder="Director (opcional)"></div>
-                <div class="col-12 col-md-8"><input type="file" name="image" class="form-control" accept="image/*"></div>
-                <div class="col-12 col-md-4"><button type="submit" class="btn btn-success w-100">Agregar temporada</button></div>
+                <div class="col-12 col-md-3"><input type="text" name="name" class="form-control" placeholder="Subtítulo (opcional)"></div>
+                <div class="col-12 col-md-3"><input type="text" name="director" class="form-control" placeholder="Director (opcional)"></div>
+                <div class="col-12 col-md-6"><input type="file" name="image" class="form-control" accept="image/*"></div>
+                <div class="col-12 col-md-4"><input type="text" name="image_url" class="form-control" placeholder="o URL de póster (https://...jpg)"></div>
+                <div class="col-12 col-md-2"><button type="submit" class="btn btn-success w-100">Agregar</button></div>
             </form>
             {% endif %}
         </div>
