@@ -552,5 +552,27 @@ def add_season_cmd(entry_title, number, year, director, name, image):
     click.echo(f"Temporada {number} agregada a «{entry.title}».")
 
 
+@app.cli.command("set-season-poster")
+@click.option("--entry-title", required=True)
+@click.option("--number", required=True, type=int)
+@click.option("--image-url", required=True)
+def set_season_poster(entry_title, number, image_url):
+    """Asigna (descargando) el póster de una temporada existente."""
+    entry = Entry.query.filter(db.func.lower(Entry.title) == entry_title.lower()).first()
+    if entry is None:
+        click.echo(f"No existe la serie «{entry_title}».")
+        return
+    season = Season.query.filter_by(entry_id=entry.id, number=number).first()
+    if season is None:
+        click.echo(f"«{entry.title}» no tiene temporada {number}.")
+        return
+    try:
+        season.image = download_poster(image_url, f"{entry.title}_T{number}")
+        db.session.commit()
+        click.echo(f"Póster de la temporada {number} de «{entry.title}» actualizado.")
+    except Exception as exc:
+        click.echo(f"⚠️ No se pudo descargar la imagen: {exc}")
+
+
 if __name__ == "__main__":
     app.run(debug=True)
