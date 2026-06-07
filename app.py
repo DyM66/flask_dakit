@@ -946,6 +946,7 @@ def add_person(name, birth, death, nationality, photo_url):
             person.photo_source = "upload"
         except Exception as exc:
             click.echo(f"⚠️ No se pudo descargar la foto: {exc}")
+    person.enriched_at = datetime.now()
     db.session.commit()
     click.echo(f"Persona «{person.name}» {'creada' if created else 'actualizada'}.")
 
@@ -962,10 +963,61 @@ def set_person_photo(name, photo_url):
     try:
         person.photo = download_poster(photo_url, f"person_{person.id}")
         person.photo_source = "upload"
+        person.enriched_at = datetime.now()
         db.session.commit()
         click.echo(f"Foto de «{person.name}» actualizada.")
     except Exception as exc:
         click.echo(f"⚠️ No se pudo descargar la foto: {exc}")
+
+
+@app.cli.command("link-person")
+@click.option("--name", required=True)
+@click.option("--entry-title", "entry_title", required=True)
+@click.option("--role", type=click.Choice(["director", "actor"]), required=True)
+def link_person(name, entry_title, role):
+    """Vincula una persona EXISTENTE a una entrada existente (aparición). Idempotente."""
+    person = Person.query.filter_by(normalized_name=normalize_text(name)).first()
+    if not person:
+        click.echo(f"No existe la persona «{name}» (créala con add-person antes de vincular).")
+        return
+    entry = Entry.query.filter(db.func.lower(Entry.title) == entry_title.lower()).first()
+    if not entry:
+        click.echo(f"No existe la entrada «{entry_title}».")
+        return
+    if EntryPerson.query.filter_by(entry_id=entry.id, person_id=person.id, role=role).first():
+        click.echo(f"Ya estaba vinculado: {person.name} · «{entry.title}» · {role}.")
+        return
+    db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role))
+    db.session.commit()
+    click.echo(f"Vinculado: {person.name} → «{entry.title}» ({role}).")
+
+
+@app.cli.command("apply-links")
+@click.argument("json_path")
+def apply_links(json_path):
+    """Crea vínculos persona↔entrada en lote desde [{name, entry_title, role}]. Solo personas y entradas existentes; idempotente."""
+    import json
+    with open(json_path, encoding="utf-8") as handle:
+        items = json.load(handle)
+    people = {p.normalized_name: p for p in Person.query.all()}
+    entries = {normalize_text(e.title): e for e in Entry.query.all()}
+    created = skipped = missing = 0
+    for it in items:
+        role = it.get("role")
+        if role not in ("director", "actor"):
+            continue
+        person = people.get(normalize_text(it.get("name", "")))
+        entry = entries.get(normalize_text(it.get("entry_title", "")))
+        if not person or not entry:
+            missing += 1
+            continue
+        if EntryPerson.query.filter_by(entry_id=entry.id, person_id=person.id, role=role).first():
+            skipped += 1
+            continue
+        db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role))
+        created += 1
+    db.session.commit()
+    click.echo(f"Vínculos nuevos: {created}. Ya existían: {skipped}. Sin match (persona/entrada): {missing}.")
 
 
 PLATFORM_SEED = [
