@@ -14,6 +14,9 @@
                     <input type="text" name="username" class="form-control" placeholder="Usuario" required>
                 </div>
                 <div class="col-12 col-sm">
+                    <input type="email" name="email" class="form-control" placeholder="Correo (para el código de acceso)" required>
+                </div>
+                <div class="col-12 col-sm">
                     <input type="password" name="password" class="form-control" placeholder="Contraseña" required>
                 </div>
                 <div class="col-12 col-sm-auto">
@@ -24,7 +27,7 @@
             <ul class="list-group">
                 {% for user in users %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <span>{{ user.username }}{% if user.id == current_user.id %} <span class="badge text-bg-primary">tú</span>{% endif %}</span>
+                    <span>{{ user.username }}{% if user.id == current_user.id %} <span class="badge text-bg-primary">tú</span>{% endif %}<small class="text-muted ms-2">{{ user.email or 'sin correo' }}</small></span>
                     {% if user.id != current_user.id %}
                     <form action="{{ url_for('delete_user', id=user.id) }}" method="POST" onsubmit="return confirm('¿Eliminar al usuario «{{ user.username }}»?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

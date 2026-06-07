@@ -63,7 +63,7 @@ jobs:
             echo "🔍 Health check (a Gunicorn, hasta 6 intentos)..."
             ok=0
             for i in $(seq 1 6); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ || true)
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/login || true)
               if [ "$code" = "200" ]; then ok=1; echo "✅ Gunicorn responde 200"; break; fi
               echo "  intento $i: HTTP $code — reintentando en 3s..."
               sleep 3

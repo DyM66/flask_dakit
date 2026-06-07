@@ -5,8 +5,8 @@
 {% block content %}
     <div class="row justify-content-center">
         <div class="col-12 col-sm-8 col-md-5 col-lg-4">
-            <h1 class="h3 mb-1 text-center">Verificación en dos pasos</h1>
-            <p class="text-muted text-center small mb-4">Ingresa el código de 6 dígitos de tu app autenticadora.</p>
+            <h1 class="h3 mb-1 text-center">Revisa tu correo</h1>
+            <p class="text-muted text-center small mb-4">Enviamos un código de 6 dígitos a <strong>{{ email }}</strong>. Ingrésalo para entrar (vence en 10 minutos).</p>
             <form action="{{ url_for('login_2fa') }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
@@ -14,7 +14,11 @@
                 </div>
                 <button type="submit" class="btn btn-primary w-100">Verificar</button>
             </form>
-            <a href="{{ url_for('login') }}" class="btn btn-link w-100 mt-2">Cancelar</a>
+            <form action="{{ url_for('login_2fa_resend') }}" method="POST" class="text-center mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-link btn-sm">¿No te llegó? Reenviar código</button>
+            </form>
+            <a href="{{ url_for('login') }}" class="btn btn-link btn-sm w-100">Cancelar</a>
         </div>
     </div>
 {% endblock %}

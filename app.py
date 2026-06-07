@@ -1,11 +1,12 @@
 import os
+import secrets
+import smtplib
 import unicodedata
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timedelta
+from email.message import EmailMessage
 
 import click
-import pyotp
-import segno
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_login import (
     LoginManager,
@@ -59,7 +60,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    totp_secret = db.Column(db.String(64))
+    email = db.Column(db.String(255))
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -69,10 +70,7 @@ class User(UserMixin, db.Model):
 
     @property
     def two_factor_enabled(self):
-        return bool(self.totp_secret)
-
-    def verify_totp(self, code):
-        return self.two_factor_enabled and pyotp.TOTP(self.totp_secret).verify((code or "").strip(), valid_window=1)
+        return bool(self.email)
 
 
 class Genre(db.Model):
@@ -150,6 +148,38 @@ def normalize_text(value):
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
+def send_email(to, subject, body):
+    if not app.config.get("MAIL_HOST"):
+        raise RuntimeError("El envío de correo no está configurado.")
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = f"Dakit <{app.config['MAIL_FROM']}>"
+    message["To"] = to
+    message.set_content(body)
+    with smtplib.SMTP(app.config["MAIL_HOST"], app.config["MAIL_PORT"], timeout=20) as server:
+        server.starttls()
+        server.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
+        server.send_message(message)
+
+
+def issue_code(email, subject):
+    """Genera un código, lo envía por correo y devuelve {hash, exp} para la sesión."""
+    code = f"{secrets.randbelow(1000000):06d}"
+    send_email(email, subject, f"Tu código de acceso a Dakit es:\n\n    {code}\n\nVence en 10 minutos. Si no fuiste tú, ignora este correo.")
+    return {"hash": generate_password_hash(code), "exp": (datetime.now() + timedelta(minutes=10)).timestamp()}
+
+
+def code_matches(data, entered):
+    return bool(data) and datetime.now().timestamp() < data.get("exp", 0) and check_password_hash(data.get("hash", ""), (entered or "").strip())
+
+
+def mask_email(email):
+    if not email or "@" not in email:
+        return email or ""
+    name, domain = email.split("@", 1)
+    return f"{name[0]}***@{domain}"
+
+
 def save_image(file):
     if file and file.filename and allowed_file(file.filename):
         filename = secure_filename(file.filename)
@@ -203,6 +233,7 @@ def ranked_with_pct(counter, limit):
 # ─────────────────────────────── Catálogo ──────────────────────────────
 
 @app.route("/")
+@login_required
 def index():
     q = request.args.get("q", "").strip()
     type_filter = request.args.get("type", "").strip()
@@ -236,6 +267,7 @@ def index():
 
 
 @app.route("/dashboard")
+@login_required
 def dashboard():
     entries = Entry.query.all()
     total = len(entries)
@@ -427,6 +459,7 @@ def delete_season(id):
 # ─────────────────────────────── Géneros ───────────────────────────────
 
 @app.route("/genres")
+@login_required
 def genres():
     items = Genre.query.order_by(Genre.name).all()
     return render_template("genres.html", genres=items)
@@ -509,7 +542,12 @@ def login():
         user = User.query.filter_by(username=request.form["username"]).first()
         if user and user.check_password(request.form["password"]):
             if user.two_factor_enabled:
-                session["pending_2fa_user"] = user.id
+                try:
+                    otp = issue_code(user.email, "Tu código de acceso a Dakit")
+                except Exception as exc:
+                    flash(f"No se pudo enviar el código a tu correo: {exc}", "danger")
+                    return render_template("login.html")
+                session["login_otp"] = {"user": user.id, **otp}
                 session["pending_2fa_next"] = request.args.get("next", "")
                 return redirect(url_for("login_2fa"))
             login_user(user)
@@ -524,21 +562,36 @@ def login():
 
 @app.route("/login/2fa", methods=["GET", "POST"])
 def login_2fa():
-    user = db.session.get(User, session.get("pending_2fa_user") or 0)
+    data = session.get("login_otp")
+    user = db.session.get(User, data["user"]) if data else None
     if user is None or not user.two_factor_enabled:
-        session.pop("pending_2fa_user", None)
+        session.pop("login_otp", None)
         return redirect(url_for("login"))
     if request.method == "POST":
-        if user.verify_totp(request.form.get("code", "")):
+        if code_matches(data, request.form.get("code", "")):
             login_user(user)
-            session.pop("pending_2fa_user", None)
+            session.pop("login_otp", None)
             next_page = session.pop("pending_2fa_next", "")
             flash(f"Bienvenido, {user.username}.", "success")
             if next_page and next_page.startswith("/"):
                 return redirect(next_page)
             return redirect(url_for("index"))
-        flash("Código incorrecto. Inténtalo de nuevo.", "danger")
-    return render_template("two_factor_verify.html")
+        flash("Código incorrecto o expirado.", "danger")
+    return render_template("two_factor_verify.html", email=mask_email(user.email))
+
+
+@app.route("/login/2fa/resend", methods=["POST"])
+def login_2fa_resend():
+    data = session.get("login_otp")
+    user = db.session.get(User, data["user"]) if data else None
+    if user is None or not user.two_factor_enabled:
+        return redirect(url_for("login"))
+    try:
+        session["login_otp"] = {"user": user.id, **issue_code(user.email, "Tu código de acceso a Dakit")}
+        flash("Te reenviamos un nuevo código.", "info")
+    except Exception as exc:
+        flash(f"No se pudo reenviar el código: {exc}", "danger")
+    return redirect(url_for("login_2fa"))
 
 
 @app.route("/logout")
@@ -552,36 +605,34 @@ def logout():
 @app.route("/2fa/setup", methods=["GET", "POST"])
 @login_required
 def two_factor_setup():
-    if current_user.two_factor_enabled:
-        return render_template("two_factor_setup.html", enabled=True, qr=None, secret=None)
-
-    secret = session.get("2fa_setup_secret") or pyotp.random_base32()
-    session["2fa_setup_secret"] = secret
-
     if request.method == "POST":
-        if pyotp.TOTP(secret).verify(request.form.get("code", "").strip(), valid_window=1):
-            current_user.totp_secret = secret
-            db.session.commit()
-            session.pop("2fa_setup_secret", None)
-            flash("Autenticación de dos factores activada. Pedirá un código en tu próximo inicio de sesión.", "success")
-            return redirect(url_for("two_factor_setup"))
-        flash("Código incorrecto. Revisa la app autenticadora e inténtalo de nuevo.", "danger")
+        if request.form.get("code"):
+            data = session.get("setup_otp")
+            if data and code_matches(data, request.form.get("code", "")):
+                current_user.email = data["email"]
+                db.session.commit()
+                session.pop("setup_otp", None)
+                flash("Listo. Tu correo de acceso quedó actualizado.", "success")
+                return redirect(url_for("two_factor_setup"))
+            flash("Código incorrecto o expirado.", "danger")
+        else:
+            email = request.form.get("email", "").strip()
+            if "@" not in email:
+                flash("Ingresa un correo válido.", "danger")
+            elif email == current_user.email:
+                flash("Ese ya es tu correo de acceso.", "info")
+            else:
+                try:
+                    session["setup_otp"] = {"email": email, **issue_code(email, "Verifica tu correo en Dakit")}
+                    flash(f"Te enviamos un código a {email} para confirmar el cambio.", "info")
+                except Exception as exc:
+                    flash(f"No se pudo enviar el correo: {exc}", "danger")
 
-    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=current_user.username, issuer_name="Dakit")
-    qr = segno.make(uri).svg_data_uri(scale=5)
-    return render_template("two_factor_setup.html", enabled=False, qr=qr, secret=secret)
-
-
-@app.route("/2fa/disable", methods=["POST"])
-@login_required
-def two_factor_disable():
-    if current_user.check_password(request.form.get("password", "")):
-        current_user.totp_secret = None
-        db.session.commit()
-        flash("Autenticación de dos factores desactivada.", "info")
-    else:
-        flash("Contraseña incorrecta; el 2FA sigue activo.", "danger")
-    return redirect(url_for("two_factor_setup"))
+    return render_template(
+        "two_factor_setup.html",
+        email=current_user.email,
+        pending=session.get("setup_otp", {}).get("email"),
+    )
 
 
 # ─────────────────────────────── Usuarios ──────────────────────────────
@@ -598,12 +649,13 @@ def users():
 def add_user():
     username = request.form["username"].strip()
     password = request.form["password"]
-    if not username or not password:
-        flash("Usuario y contraseña son obligatorios.", "danger")
+    email = request.form.get("email", "").strip()
+    if not username or not password or "@" not in email:
+        flash("Usuario, contraseña y correo válido son obligatorios.", "danger")
     elif User.query.filter_by(username=username).first():
         flash(f"El usuario «{username}» ya existe.", "danger")
     else:
-        user = User(username=username)
+        user = User(username=username, email=email)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -699,12 +751,13 @@ def add_entry(title, title_alt, creator, main_cast, year, platform, type_, genre
 @app.cli.command("create-user")
 @click.argument("username")
 @click.argument("password")
-def create_user(username, password):
-    """Crea un usuario para administrar la biblioteca: flask create-user <usuario> <clave>."""
+@click.option("--email", default="", help="Correo donde llegará el código de acceso (2FA).")
+def create_user(username, password, email):
+    """Crea un usuario: flask create-user <usuario> <clave> [--email correo]."""
     if User.query.filter_by(username=username).first():
         click.echo(f"El usuario '{username}' ya existe.")
         return
-    user = User(username=username)
+    user = User(username=username, email=email.strip() or None)
     user.set_password(password)
     db.session.add(user)
     db.session.commit()

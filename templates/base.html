@@ -23,7 +23,6 @@
         #lightbox.show { display: flex; }
         #lightbox img { max-width: 95vw; max-height: 95vh; border-radius: .5rem; box-shadow: 0 0 40px rgba(0,0,0,.6); }
         .dakit-bar { height: 6px; }
-        .qr-img { width: 200px; height: 200px; }
     </style>
     {% block head %}{% endblock %}
 </head>
@@ -36,9 +35,9 @@
             </button>
             <div class="collapse navbar-collapse" id="mainnav">
                 <ul class="navbar-nav me-auto">
+                    {% if current_user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">📊 Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('genres') }}">Géneros</a></li>
-                    {% if current_user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('platforms') }}">Plataformas</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('users') }}">Usuarios</a></li>
                     {% endif %}
