@@ -4,7 +4,9 @@ from collections import Counter
 from datetime import date
 
 import click
-from flask import Flask, flash, redirect, render_template, request, url_for
+import pyotp
+import segno
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -57,12 +59,20 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    totp_secret = db.Column(db.String(64))
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    @property
+    def two_factor_enabled(self):
+        return bool(self.totp_secret)
+
+    def verify_totp(self, code):
+        return self.two_factor_enabled and pyotp.TOTP(self.totp_secret).verify((code or "").strip(), valid_window=1)
 
 
 class Genre(db.Model):
@@ -498,6 +508,10 @@ def login():
     if request.method == "POST":
         user = User.query.filter_by(username=request.form["username"]).first()
         if user and user.check_password(request.form["password"]):
+            if user.two_factor_enabled:
+                session["pending_2fa_user"] = user.id
+                session["pending_2fa_next"] = request.args.get("next", "")
+                return redirect(url_for("login_2fa"))
             login_user(user)
             flash(f"Bienvenido, {user.username}.", "success")
             next_page = request.args.get("next")
@@ -508,12 +522,66 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/login/2fa", methods=["GET", "POST"])
+def login_2fa():
+    user = db.session.get(User, session.get("pending_2fa_user") or 0)
+    if user is None or not user.two_factor_enabled:
+        session.pop("pending_2fa_user", None)
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        if user.verify_totp(request.form.get("code", "")):
+            login_user(user)
+            session.pop("pending_2fa_user", None)
+            next_page = session.pop("pending_2fa_next", "")
+            flash(f"Bienvenido, {user.username}.", "success")
+            if next_page and next_page.startswith("/"):
+                return redirect(next_page)
+            return redirect(url_for("index"))
+        flash("Código incorrecto. Inténtalo de nuevo.", "danger")
+    return render_template("two_factor_verify.html")
+
+
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     flash("Sesión cerrada.", "info")
     return redirect(url_for("index"))
+
+
+@app.route("/2fa/setup", methods=["GET", "POST"])
+@login_required
+def two_factor_setup():
+    if current_user.two_factor_enabled:
+        return render_template("two_factor_setup.html", enabled=True, qr=None, secret=None)
+
+    secret = session.get("2fa_setup_secret") or pyotp.random_base32()
+    session["2fa_setup_secret"] = secret
+
+    if request.method == "POST":
+        if pyotp.TOTP(secret).verify(request.form.get("code", "").strip(), valid_window=1):
+            current_user.totp_secret = secret
+            db.session.commit()
+            session.pop("2fa_setup_secret", None)
+            flash("Autenticación de dos factores activada. Pedirá un código en tu próximo inicio de sesión.", "success")
+            return redirect(url_for("two_factor_setup"))
+        flash("Código incorrecto. Revisa la app autenticadora e inténtalo de nuevo.", "danger")
+
+    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=current_user.username, issuer_name="Dakit")
+    qr = segno.make(uri).svg_data_uri(scale=5)
+    return render_template("two_factor_setup.html", enabled=False, qr=qr, secret=secret)
+
+
+@app.route("/2fa/disable", methods=["POST"])
+@login_required
+def two_factor_disable():
+    if current_user.check_password(request.form.get("password", "")):
+        current_user.totp_secret = None
+        db.session.commit()
+        flash("Autenticación de dos factores desactivada.", "info")
+    else:
+        flash("Contraseña incorrecta; el 2FA sigue activo.", "danger")
+    return redirect(url_for("two_factor_setup"))
 
 
 # ─────────────────────────────── Usuarios ──────────────────────────────
