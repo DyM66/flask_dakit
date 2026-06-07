@@ -13,7 +13,6 @@ from flask_login import (
     login_user,
     logout_user,
 )
-from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -25,7 +24,6 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 csrf = CSRFProtect(app)
 
 login_manager = LoginManager(app)

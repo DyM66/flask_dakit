@@ -37,7 +37,11 @@
         {% for entry in entries %}
         <div class="col">
             <div class="card h-100 shadow-sm">
-                <img src="{{ url_for('static', filename='uploads/' + entry.image) if entry.image else url_for('static', filename='default.jpg') }}" class="card-img-top poster" alt="{{ entry.title }}">
+                {% if entry.image %}
+                <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" class="card-img-top poster" alt="{{ entry.title }}">
+                {% else %}
+                <div class="card-img-top poster d-flex align-items-center justify-content-center fs-2">🎬</div>
+                {% endif %}
                 <div class="card-body p-2 d-flex flex-column">
                     <h6 class="card-title mb-0">{{ entry.title }}</h6>
                     {% if entry.title_alt and entry.title_alt != entry.title %}
