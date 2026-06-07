@@ -122,12 +122,16 @@ class Entry(db.Model):
         return [link.person for link in self.people if link.role == "actor"]
 
     @property
+    def cast_links(self):
+        return [link for link in self.people if link.role == "actor"]
+
+    @property
     def creator_csv(self):
         return ", ".join(p.name for p in self.directors)
 
     @property
     def cast_csv(self):
-        return ", ".join(p.name for p in self.cast)
+        return ", ".join(f"{l.person.name} ({l.character})" if l.character else l.person.name for l in self.cast_links)
 
     def __repr__(self):
         return f"<{self.id} - {self.title}>"
@@ -190,12 +194,12 @@ class Person(db.Model):
         return years
 
     @property
-    def entries_as_director(self):
-        return [link.entry for link in self.links if link.role == "director"]
+    def director_links(self):
+        return [link for link in self.links if link.role == "director"]
 
     @property
-    def entries_as_actor(self):
-        return [link.entry for link in self.links if link.role == "actor"]
+    def actor_links(self):
+        return [link for link in self.links if link.role == "actor"]
 
     def __repr__(self):
         return f"<Person {self.name}>"
@@ -206,6 +210,7 @@ class EntryPerson(db.Model):
     entry_id = db.Column(db.Integer, db.ForeignKey("entry.id"), primary_key=True)
     person_id = db.Column(db.Integer, db.ForeignKey("person.id"), primary_key=True)
     role = db.Column(db.String(20), primary_key=True)  # 'director' | 'actor'
+    character = db.Column(db.String(120))              # personaje interpretado (solo actores)
 
     entry = db.relationship("Entry", back_populates="people")
     person = db.relationship("Person", back_populates="links")
@@ -258,18 +263,36 @@ def get_or_create_person(name):
     return person, True
 
 
+def split_character(raw):
+    """Separa 'Nombre (Personaje)' → (nombre, personaje|None). Sin paréntesis → (nombre, None)."""
+    raw = raw.strip()
+    if raw.endswith(")") and "(" in raw:
+        name, _, rest = raw.partition("(")
+        return name.strip(), (rest[:-1].strip() or None)
+    return raw, None
+
+
 def sync_entry_people(entry, creator_csv, cast_csv):
-    """Reemplaza los enlaces de la entrada según los CSV del form (find-or-create)."""
+    """Reemplaza los enlaces de la entrada según los CSV del form (find-or-create).
+
+    Directores: solo nombres. Reparto: 'Nombre (Personaje)' con personaje opcional.
+    """
     entry.people.clear()
     db.session.flush()  # ejecuta los DELETE de enlaces viejos antes de re-insertar
     seen = set()
-    for csv, role in ((creator_csv, "director"), (cast_csv, "actor")):
-        for raw in (csv or "").split(","):
-            person, _ = get_or_create_person(raw)
-            if not person or (person.id, role) in seen:
-                continue
-            seen.add((person.id, role))
-            entry.people.append(EntryPerson(person=person, role=role))
+    for raw in (creator_csv or "").split(","):
+        person, _ = get_or_create_person(raw)
+        if not person or (person.id, "director") in seen:
+            continue
+        seen.add((person.id, "director"))
+        entry.people.append(EntryPerson(person=person, role="director"))
+    for raw in (cast_csv or "").split(","):
+        name, character = split_character(raw)
+        person, _ = get_or_create_person(name)
+        if not person or (person.id, "actor") in seen:
+            continue
+        seen.add((person.id, "actor"))
+        entry.people.append(EntryPerson(person=person, role="actor", character=character))
 
 
 def ranked_people(counter, limit):
@@ -974,7 +997,8 @@ def set_person_photo(name, photo_url):
 @click.option("--name", required=True)
 @click.option("--entry-title", "entry_title", required=True)
 @click.option("--role", type=click.Choice(["director", "actor"]), required=True)
-def link_person(name, entry_title, role):
+@click.option("--character", default="", help="Personaje interpretado (solo actores).")
+def link_person(name, entry_title, role, character):
     """Vincula una persona EXISTENTE a una entrada existente (aparición). Idempotente."""
     person = Person.query.filter_by(normalized_name=normalize_text(name)).first()
     if not person:
@@ -984,24 +1008,35 @@ def link_person(name, entry_title, role):
     if not entry:
         click.echo(f"No existe la entrada «{entry_title}».")
         return
-    if EntryPerson.query.filter_by(entry_id=entry.id, person_id=person.id, role=role).first():
-        click.echo(f"Ya estaba vinculado: {person.name} · «{entry.title}» · {role}.")
+    char = character.strip() or None
+    link = EntryPerson.query.filter_by(entry_id=entry.id, person_id=person.id, role=role).first()
+    if link:
+        if char and link.character != char:
+            link.character = char
+            db.session.commit()
+            click.echo(f"Personaje actualizado: {person.name} como «{char}» en «{entry.title}».")
+        else:
+            click.echo(f"Ya estaba vinculado: {person.name} · «{entry.title}» · {role}.")
         return
-    db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role))
+    db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role, character=char))
     db.session.commit()
-    click.echo(f"Vinculado: {person.name} → «{entry.title}» ({role}).")
+    click.echo(f"Vinculado: {person.name} → «{entry.title}» ({role}){f' como «{char}»' if char else ''}.")
 
 
 @app.cli.command("apply-links")
 @click.argument("json_path")
-def apply_links(json_path):
-    """Crea vínculos persona↔entrada en lote desde [{name, entry_title, role}]. Solo personas y entradas existentes; idempotente."""
+@click.option("--no-create", is_flag=True, help="Solo actualiza el personaje de vínculos existentes; no crea vínculos nuevos.")
+def apply_links(json_path, no_create):
+    """Crea/actualiza vínculos persona↔entrada en lote desde [{name, entry_title, role, character?}].
+
+    Solo personas y entradas existentes; idempotente. Con --no-create solo refresca personajes.
+    """
     import json
     with open(json_path, encoding="utf-8") as handle:
         items = json.load(handle)
     people = {p.normalized_name: p for p in Person.query.all()}
     entries = {normalize_text(e.title): e for e in Entry.query.all()}
-    created = skipped = missing = 0
+    created = updated = skipped = missing = 0
     for it in items:
         role = it.get("role")
         if role not in ("director", "actor"):
@@ -1011,13 +1046,22 @@ def apply_links(json_path):
         if not person or not entry:
             missing += 1
             continue
-        if EntryPerson.query.filter_by(entry_id=entry.id, person_id=person.id, role=role).first():
-            skipped += 1
+        char = (it.get("character") or "").strip() or None
+        link = EntryPerson.query.filter_by(entry_id=entry.id, person_id=person.id, role=role).first()
+        if link:
+            if char and link.character != char:
+                link.character = char
+                updated += 1
+            else:
+                skipped += 1
             continue
-        db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role))
+        if no_create:
+            missing += 1
+            continue
+        db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role, character=char))
         created += 1
     db.session.commit()
-    click.echo(f"Vínculos nuevos: {created}. Ya existían: {skipped}. Sin match (persona/entrada): {missing}.")
+    click.echo(f"Vínculos nuevos: {created}. Personajes actualizados: {updated}. Sin cambio: {skipped}. Sin match: {missing}.")
 
 
 PLATFORM_SEED = [

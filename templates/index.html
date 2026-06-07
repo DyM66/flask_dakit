@@ -106,8 +106,8 @@
             <p class="mb-1"><span class="text-muted">Dirección / Autor:</span>
                 {% for p in entry.directors %}<a href="{{ url_for('person_detail', person_id=p.id) }}" class="text-decoration-none">{{ p.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
             </p>
-            {% if entry.cast %}<p class="mb-3"><span class="text-muted">Reparto:</span>
-                {% for p in entry.cast %}<a href="{{ url_for('person_detail', person_id=p.id) }}" class="text-decoration-none">{{ p.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+            {% if entry.cast_links %}<p class="mb-3"><span class="text-muted">Reparto:</span>
+                {% for l in entry.cast_links %}<a href="{{ url_for('person_detail', person_id=l.person.id) }}" class="text-decoration-none">{{ l.person.name }}</a>{% if l.character %} <span class="text-muted small">({{ l.character }})</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
             </p>{% endif %}
             {% if entry.seasons %}
             <h6 class="border-top pt-3">Temporadas</h6>

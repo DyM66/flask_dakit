@@ -2,20 +2,21 @@
 
 {% block title %}Dakit - {{ person.name }}{% endblock %}
 
-{% macro worksgrid(entries) %}
+{% macro worksgrid(links) %}
 <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 g-2 mb-3">
-    {% for entry in entries %}
+    {% for l in links %}
     <div class="col">
-        <a href="{{ url_for('index', q=entry.title) }}" class="text-decoration-none text-reset">
+        <a href="{{ url_for('index', q=l.entry.title) }}" class="text-decoration-none text-reset">
             <div class="card h-100 shadow-sm">
-                {% if entry.image %}
-                <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" class="card-img-top work-poster" alt="{{ entry.title }}" loading="lazy">
+                {% if l.entry.image %}
+                <img src="{{ url_for('static', filename='uploads/' + l.entry.image) }}" class="card-img-top work-poster" alt="{{ l.entry.title }}" loading="lazy">
                 {% else %}
                 <div class="card-img-top work-poster d-flex align-items-center justify-content-center fs-2">🎬</div>
                 {% endif %}
                 <div class="card-body p-2">
-                    <div class="small fw-semibold text-truncate">{{ entry.title }}</div>
-                    <div class="small text-muted">{{ entry.year }} · {{ entry.type }}</div>
+                    <div class="small fw-semibold text-truncate">{{ l.entry.title }}</div>
+                    <div class="small text-muted">{{ l.entry.year }} · {{ l.entry.type }}</div>
+                    {% if l.character %}<div class="small text-truncate" title="{{ l.character }}">como {{ l.character }}</div>{% endif %}
                 </div>
             </div>
         </a>
@@ -51,14 +52,14 @@
             </div>
         </div>
 
-        {% if person.entries_as_director %}
-        <h2 class="h5 border-top pt-3">Dirección / Autoría <span class="text-muted fs-6">({{ person.entries_as_director|length }})</span></h2>
-        {{ worksgrid(person.entries_as_director) }}
+        {% if person.director_links %}
+        <h2 class="h5 border-top pt-3">Dirección / Autoría <span class="text-muted fs-6">({{ person.director_links|length }})</span></h2>
+        {{ worksgrid(person.director_links) }}
         {% endif %}
 
-        {% if person.entries_as_actor %}
-        <h2 class="h5 border-top pt-3">Reparto <span class="text-muted fs-6">({{ person.entries_as_actor|length }})</span></h2>
-        {{ worksgrid(person.entries_as_actor) }}
+        {% if person.actor_links %}
+        <h2 class="h5 border-top pt-3">Reparto <span class="text-muted fs-6">({{ person.actor_links|length }})</span></h2>
+        {{ worksgrid(person.actor_links) }}
         {% endif %}
 
         <details class="mt-4">
