@@ -233,6 +233,23 @@ def normalize_text(value):
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
+_FEM_SUFFIXES = (("esa", "es"), ("ana", "ano"), ("ina", "ino"), ("ena", "eno"), ("ica", "ico"), ("usa", "uso"), ("ola", "ol"))
+
+
+def nationality_key(nat):
+    """Clave de agrupación de nacionalidades: sin acentos y con género plegado a masculino
+    (Británico/Británica/Britanico → 'britanico'). Las compuestas se dejan tal cual (sin acentos)."""
+    n = normalize_text(nat).strip()
+    if "-" in n:
+        return n
+    for fem, masc in _FEM_SUFFIXES:
+        if n.endswith(fem):
+            return n[: -len(fem)] + masc
+    if len(n) > 3 and n.endswith("a"):
+        return n[:-1] + "o"
+    return n
+
+
 def parse_date(value):
     """Parsea 'YYYY-MM-DD'. Devuelve date, o None si está vacío o es inválido."""
     value = (value or "").strip()
@@ -519,7 +536,17 @@ def dashboard():
     versatility_counter = Counter({pid: len(chars) for pid, chars in actor_characters.items()})
     actor_metric = "characters" if request.args.get("actors") == "characters" else "appearances"
 
-    nationality_counter = Counter(p.nationality for p in Person.query.filter(Person.nationality.isnot(None)))
+    nat_groups = defaultdict(Counter)
+    for p in Person.query.filter(Person.nationality.isnot(None)):
+        raw = p.nationality.strip()
+        nat_groups[nationality_key(raw)][raw] += 1
+    nat_ranked = sorted(nat_groups.items(), key=lambda kv: sum(kv[1].values()), reverse=True)[:12]
+    nat_top = sum(nat_ranked[0][1].values()) if nat_ranked else 1
+    top_nationalities = [
+        (max(sp, key=lambda s: (normalize_text(s) == key, any(ord(c) > 127 for c in s), sp[s])),
+         sum(sp.values()), round(sum(sp.values()) / nat_top * 100))
+        for key, sp in nat_ranked
+    ]
 
     # Icónicos: top apariciones como un mismo personaje (>= 2)
     iconic_raw = sorted(
@@ -555,7 +582,7 @@ def dashboard():
         top_directors=ranked_people(director_counter, 40),
         top_actors=ranked_people(versatility_counter if actor_metric == "characters" else actor_counter, 40),
         actor_metric=actor_metric,
-        top_nationalities=ranked_with_pct(nationality_counter, 12),
+        top_nationalities=top_nationalities,
         top_iconic=top_iconic,
         top_characters=ranked_with_pct(recurring_counter, 10),
         top_coral=top_coral,
