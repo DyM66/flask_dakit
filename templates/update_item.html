@@ -68,6 +68,38 @@
                     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
                 </div>
             </form>
+
+            {% if entry.type in ['Serie', 'Anime'] %}
+            <hr class="my-4">
+            <h2 class="h5 mb-3">Temporadas</h2>
+            <p class="text-muted small">Desglosa la serie por temporadas (cada una puede tener su año, director y póster). Solo registra las que has visto.</p>
+
+            {% if entry.seasons %}
+            <ul class="list-group mb-3">
+                {% for season in entry.seasons %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>Temporada {{ season.number }}{% if season.name %}: {{ season.name }}{% endif %}
+                        <span class="text-muted small">({% if season.year %}{{ season.year }}{% endif %}{% if season.director %} · {{ season.director }}{% endif %})</span>
+                    </span>
+                    <form action="{{ url_for('delete_season', id=season.id) }}" method="POST" onsubmit="return confirm('¿Eliminar la temporada {{ season.number }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <form action="{{ url_for('add_season', id=entry.id) }}" method="POST" enctype="multipart/form-data" class="row g-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-4 col-md-2"><input type="number" name="number" class="form-control" placeholder="N°" required></div>
+                <div class="col-4 col-md-2"><input type="number" name="year" class="form-control" placeholder="Año"></div>
+                <div class="col-12 col-md-4"><input type="text" name="name" class="form-control" placeholder="Subtítulo (opcional)"></div>
+                <div class="col-12 col-md-4"><input type="text" name="director" class="form-control" placeholder="Director (opcional)"></div>
+                <div class="col-12 col-md-8"><input type="file" name="image" class="form-control" accept="image/*"></div>
+                <div class="col-12 col-md-4"><button type="submit" class="btn btn-success w-100">Agregar temporada</button></div>
+            </form>
+            {% endif %}
         </div>
     </div>
 {% endblock %}

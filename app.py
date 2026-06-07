@@ -102,6 +102,24 @@ class Entry(db.Model):
         return f"<{self.id} - {self.title}>"
 
 
+class Season(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    entry_id = db.Column(db.Integer, db.ForeignKey("entry.id"), nullable=False)
+    number = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(120))
+    year = db.Column(db.Integer)
+    director = db.Column(db.String(100))
+    image = db.Column(db.String(100))
+
+    entry = db.relationship(
+        "Entry",
+        backref=db.backref("seasons", cascade="all, delete-orphan", order_by="Season.number"),
+    )
+
+    def __repr__(self):
+        return f"<Season {self.number} of entry {self.entry_id}>"
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -119,6 +137,22 @@ def save_image(file):
         file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
         return filename
     return None
+
+
+def download_poster(url, basename):
+    from urllib.parse import urlparse
+    from urllib.request import Request, urlopen
+
+    ext = (os.path.splitext(urlparse(url).path)[1] or ".jpg").lower()
+    if ext.lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
+        ext = ".jpg"
+    filename = secure_filename(f"{basename}{ext}")
+    http_request = Request(url, headers={"User-Agent": "dakit"})
+    with urlopen(http_request, timeout=20) as response:
+        data = response.read()
+    with open(os.path.join(app.config["UPLOAD_FOLDER"], filename), "wb") as handle:
+        handle.write(data)
+    return filename
 
 
 def selected_genres():
@@ -218,6 +252,49 @@ def delete(id):
         db.session.rollback()
         flash("No se pudo eliminar la entrada.", "danger")
     return redirect(url_for("index"))
+
+
+# ─────────────────────────────── Temporadas ────────────────────────────
+
+@app.route("/entry/<int:id>/seasons/add", methods=["POST"])
+@login_required
+def add_season(id):
+    entry = db.get_or_404(Entry, id)
+    season = Season(
+        entry_id=entry.id,
+        number=request.form.get("number", type=int),
+        name=request.form.get("name", "").strip() or None,
+        year=request.form.get("year", type=int),
+        director=request.form.get("director", "").strip() or None,
+        image=save_image(request.files.get("image")),
+    )
+    try:
+        db.session.add(season)
+        db.session.commit()
+        flash(f"Temporada {season.number} agregada a «{entry.title}».", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo agregar la temporada.", "danger")
+    return redirect(url_for("update", id=entry.id))
+
+
+@app.route("/seasons/delete/<int:id>", methods=["POST"])
+@login_required
+def delete_season(id):
+    season = db.get_or_404(Season, id)
+    entry_id = season.entry_id
+    try:
+        if season.image:
+            image_path = os.path.join(app.config["UPLOAD_FOLDER"], season.image)
+            if os.path.exists(image_path):
+                os.remove(image_path)
+        db.session.delete(season)
+        db.session.commit()
+        flash("Temporada eliminada.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo eliminar la temporada.", "danger")
+    return redirect(url_for("update", id=entry_id))
 
 
 # ─────────────────────────────── Géneros ───────────────────────────────
@@ -419,20 +496,8 @@ def add_entry(title, creator, year, platform, type_, genres, image_url):
         linked.append(name)
 
     if image_url:
-        from urllib.parse import urlparse
-        from urllib.request import Request, urlopen
-
         try:
-            ext = (os.path.splitext(urlparse(image_url).path)[1] or ".jpg").lower()
-            if ext.lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
-                ext = ".jpg"
-            filename = secure_filename(f"{title}{ext}")
-            request_ = Request(image_url, headers={"User-Agent": "dakit"})
-            with urlopen(request_, timeout=20) as response:
-                data = response.read()
-            with open(os.path.join(app.config["UPLOAD_FOLDER"], filename), "wb") as handle:
-                handle.write(data)
-            entry.image = filename
+            entry.image = download_poster(image_url, title)
         except Exception as exc:
             click.echo(f"⚠️ No se pudo descargar la imagen: {exc}")
 
@@ -453,6 +518,38 @@ def create_user(username, password):
     db.session.add(user)
     db.session.commit()
     click.echo(f"Usuario '{username}' creado.")
+
+
+@app.cli.command("add-season")
+@click.option("--entry-title", required=True)
+@click.option("--number", required=True, type=int)
+@click.option("--year", type=int)
+@click.option("--director", default="")
+@click.option("--name", default="", help="Subtítulo de la temporada (opcional).")
+@click.option("--image", default="", help="Archivo de póster ya en uploads, o URL http(s) para descargar.")
+def add_season_cmd(entry_title, number, year, director, name, image):
+    """Agrega una temporada a una serie existente (buscada por título)."""
+    entry = Entry.query.filter(db.func.lower(Entry.title) == entry_title.lower()).first()
+    if entry is None:
+        click.echo(f"No existe la serie «{entry_title}».")
+        return
+
+    poster = None
+    if image.startswith("http"):
+        try:
+            poster = download_poster(image, f"{entry.title}_T{number}")
+        except Exception as exc:
+            click.echo(f"⚠️ No se pudo descargar la imagen: {exc}")
+    elif image:
+        poster = image
+
+    season = Season(
+        entry_id=entry.id, number=number, name=name or None,
+        year=year, director=director or None, image=poster,
+    )
+    db.session.add(season)
+    db.session.commit()
+    click.echo(f"Temporada {number} agregada a «{entry.title}».")
 
 
 if __name__ == "__main__":

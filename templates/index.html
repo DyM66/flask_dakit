@@ -42,8 +42,13 @@
                     <h6 class="card-title mb-1">{{ entry.title }}</h6>
                     <p class="card-text small mb-1">{{ entry.creator }}</p>
                     <p class="card-text small text-muted mb-2">{{ entry.year }} · {{ entry.type }}</p>
-                    <div class="mt-auto d-flex flex-wrap gap-1">
-                        {% for genre in entry.genres %}<span class="badge text-bg-secondary fw-normal">{{ genre.name }}</span>{% endfor %}
+                    <div class="mt-auto">
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for genre in entry.genres %}<span class="badge text-bg-secondary fw-normal">{{ genre.name }}</span>{% endfor %}
+                        </div>
+                        {% if entry.seasons %}
+                        <button class="btn btn-sm btn-outline-secondary w-100 mt-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#seasons-{{ entry.id }}">📺 {{ entry.seasons|length }} temporada{{ '' if entry.seasons|length == 1 else 's' }}</button>
+                        {% endif %}
                     </div>
                 </div>
                 {% if current_user.is_authenticated %}
@@ -70,4 +75,30 @@
         {% endif %}
     </div>
     {% endif %}
+
+    {% for entry in entries if entry.seasons %}
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="seasons-{{ entry.id }}" aria-labelledby="seasons-{{ entry.id }}-label">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="seasons-{{ entry.id }}-label">{{ entry.title }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+        </div>
+        <div class="offcanvas-body">
+            <p class="text-muted small mb-3">{{ entry.creator }} · {{ entry.platform }} · {{ entry.type }}</p>
+            {% for season in entry.seasons %}
+            <div class="d-flex gap-3 mb-3">
+                {% if season.image %}
+                <img src="{{ url_for('static', filename='uploads/' + season.image) }}" class="rounded season-thumb" alt="Temporada {{ season.number }}">
+                {% endif %}
+                <div>
+                    <div class="fw-semibold">Temporada {{ season.number }}{% if season.name %}: {{ season.name }}{% endif %}</div>
+                    <div class="small text-muted">{% if season.year %}{{ season.year }}{% endif %}{% if season.director %} · {{ season.director }}{% endif %}</div>
+                </div>
+            </div>
+            {% endfor %}
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('update', id=entry.id) }}" class="btn btn-sm btn-outline-primary w-100 mt-2">Gestionar temporadas</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
 {% endblock %}
