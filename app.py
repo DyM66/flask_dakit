@@ -355,7 +355,7 @@ def download_poster(url, basename):
     if ext.lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
         ext = ".jpg"
     filename = secure_filename(f"{basename}{ext}")
-    http_request = Request(url, headers={"User-Agent": "dakit"})
+    http_request = Request(url, headers={"User-Agent": "DakitBot/1.0 (https://dakit.dycloud.co; biblioteca personal)"})
     with urlopen(http_request, timeout=20) as response:
         data = response.read()
     with open(os.path.join(app.config["UPLOAD_FOLDER"], filename), "wb") as handle:
