@@ -49,24 +49,20 @@
                     {% endif %}
                     <p class="card-text small mb-1 mt-1">{{ entry.creator }}</p>
                     <p class="card-text small text-muted mb-2">{{ entry.year }} · {{ entry.type }}</p>
-                    <div class="mt-auto">
-                        <div class="d-flex flex-wrap gap-1">
-                            {% for genre in entry.genres %}<span class="badge text-bg-secondary fw-normal">{{ genre.name }}</span>{% endfor %}
-                        </div>
-                        {% if entry.seasons %}
-                        <button class="btn btn-sm btn-outline-secondary w-100 mt-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#seasons-{{ entry.id }}">📺 {{ entry.seasons|length }} temporada{{ '' if entry.seasons|length == 1 else 's' }}</button>
-                        {% endif %}
+                    <div class="mt-auto d-flex flex-wrap gap-1">
+                        {% for genre in entry.genres %}<span class="badge text-bg-secondary fw-normal">{{ genre.name }}</span>{% endfor %}
                     </div>
                 </div>
-                {% if current_user.is_authenticated %}
                 <div class="card-footer p-2 d-flex gap-1">
-                    <a href="{{ url_for('update', id=entry.id) }}" class="btn btn-sm btn-outline-primary flex-fill">Editar</a>
+                    <button class="btn btn-sm btn-outline-secondary flex-fill" type="button" data-bs-toggle="offcanvas" data-bs-target="#detail-{{ entry.id }}">ℹ️ Detalles{% if entry.seasons %} · {{ entry.seasons|length }} temp.{% endif %}</button>
+                    {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('update', id=entry.id) }}" class="btn btn-sm btn-outline-primary" aria-label="Editar">✏️</a>
                     <form action="{{ url_for('delete', id=entry.id) }}" method="POST" onsubmit="return confirm('¿Eliminar «{{ entry.title }}»?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Eliminar">🗑</button>
                     </form>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
         {% endfor %}
@@ -83,14 +79,34 @@
     </div>
     {% endif %}
 
-    {% for entry in entries if entry.seasons %}
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="seasons-{{ entry.id }}" aria-labelledby="seasons-{{ entry.id }}-label">
+    {% for entry in entries %}
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="detail-{{ entry.id }}" aria-labelledby="detail-{{ entry.id }}-label">
         <div class="offcanvas-header">
-            <h5 class="offcanvas-title" id="seasons-{{ entry.id }}-label">{{ entry.title }}</h5>
+            <div>
+                <h5 class="offcanvas-title mb-0" id="detail-{{ entry.id }}-label">{{ entry.title }}</h5>
+                {% if entry.title_alt and entry.title_alt != entry.title %}
+                <div class="small text-muted fst-italic">{{ entry.title_alt }}</div>
+                {% endif %}
+            </div>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
         </div>
         <div class="offcanvas-body">
-            <p class="text-muted small mb-3">{{ entry.creator }} · {{ entry.platform }} · {{ entry.type }}</p>
+            <div class="d-flex gap-3 mb-3">
+                {% if entry.image %}
+                <img src="{{ url_for('static', filename='uploads/' + entry.image) }}" class="rounded detail-poster" alt="{{ entry.title }}">
+                {% endif %}
+                <div class="small">
+                    <div class="mb-1"><span class="fw-semibold">{{ entry.year }}</span> · {{ entry.type }}</div>
+                    <div class="text-muted mb-2">📺 {{ entry.platform }}</div>
+                    <div class="d-flex flex-wrap gap-1">
+                        {% for genre in entry.genres %}<span class="badge text-bg-secondary fw-normal">{{ genre.name }}</span>{% endfor %}
+                    </div>
+                </div>
+            </div>
+            <p class="mb-1"><span class="text-muted">Dirección / Autor:</span> {{ entry.creator }}</p>
+            {% if entry.main_cast %}<p class="mb-3"><span class="text-muted">Reparto:</span> {{ entry.main_cast }}</p>{% endif %}
+            {% if entry.seasons %}
+            <h6 class="border-top pt-3">Temporadas</h6>
             {% for season in entry.seasons %}
             <div class="d-flex gap-3 mb-3">
                 {% if season.image %}
@@ -102,8 +118,9 @@
                 </div>
             </div>
             {% endfor %}
+            {% endif %}
             {% if current_user.is_authenticated %}
-            <a href="{{ url_for('update', id=entry.id) }}" class="btn btn-sm btn-outline-primary w-100 mt-2">Gestionar temporadas</a>
+            <a href="{{ url_for('update', id=entry.id) }}" class="btn btn-sm btn-outline-primary w-100 mt-2">Editar</a>
             {% endif %}
         </div>
     </div>

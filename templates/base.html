@@ -16,7 +16,8 @@
         .poster { aspect-ratio: 2 / 3; object-fit: cover; width: 100%; background-color: var(--bs-tertiary-bg); }
         .preview-img { max-height: 160px; }
         .season-thumb { width: 56px; height: 84px; object-fit: cover; flex: 0 0 auto; }
-        .poster, .season-thumb, .preview-img { cursor: zoom-in; }
+        .detail-poster { width: 96px; height: 144px; object-fit: cover; flex: 0 0 auto; }
+        .poster, .season-thumb, .preview-img, .detail-poster { cursor: zoom-in; }
         #lightbox { position: fixed; inset: 0; z-index: 2000; display: none; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(0,0,0,.85); cursor: zoom-out; }
         #lightbox.show { display: flex; }
         #lightbox img { max-width: 95vw; max-height: 95vh; border-radius: .5rem; box-shadow: 0 0 40px rgba(0,0,0,.6); }
@@ -161,7 +162,7 @@
         const lightbox = document.getElementById('lightbox');
         const lightboxImg = lightbox.querySelector('img');
         document.addEventListener('click', function (e) {
-            const img = e.target.closest('img.poster, img.season-thumb, img.preview-img');
+            const img = e.target.closest('img.poster, img.season-thumb, img.preview-img, img.detail-poster');
             if (img && img.getAttribute('src')) {
                 lightboxImg.src = img.src;
                 lightbox.classList.add('show');
