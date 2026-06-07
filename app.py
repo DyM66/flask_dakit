@@ -18,6 +18,8 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -109,6 +111,26 @@ class Entry(db.Model):
         backref=db.backref("entries", lazy=True),
     )
 
+    people = db.relationship(
+        "EntryPerson", back_populates="entry", cascade="all, delete-orphan"
+    )
+
+    @property
+    def directors(self):
+        return [link.person for link in self.people if link.role == "director"]
+
+    @property
+    def cast(self):
+        return [link.person for link in self.people if link.role == "actor"]
+
+    @property
+    def creator_csv(self):
+        return ", ".join(p.name for p in self.directors)
+
+    @property
+    def cast_csv(self):
+        return ", ".join(p.name for p in self.cast)
+
     def __repr__(self):
         return f"<{self.id} - {self.title}>"
 
@@ -131,6 +153,66 @@ class Season(db.Model):
         return f"<Season {self.number} of entry {self.entry_id}>"
 
 
+class Person(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    # Nombre normalizado (minúsculas, sin acentos) para unicidad y dedup.
+    normalized_name = db.Column(db.String(120), nullable=False, unique=True, index=True)
+
+    # Hoja de vida básica — todo nullable: lo no hallado queda en blanco, nunca se inventa.
+    photo = db.Column(db.String(100))          # filename en static/uploads, igual que Entry.image
+    birth_date = db.Column(db.Date)
+    death_date = db.Column(db.Date)            # NULL = sigue vivo
+    nationality = db.Column(db.String(80))
+
+    # Trazabilidad de fuente para que la skill re-consulte y detecte datos viejos.
+    tmdb_id = db.Column(db.Integer)
+    wikidata_qid = db.Column(db.String(20))
+    photo_source = db.Column(db.String(20))    # 'tmdb' | 'commons' | 'wikipedia' | 'upload'
+    photo_ref = db.Column(db.String(200))
+    enriched_at = db.Column(db.DateTime)
+
+    links = db.relationship(
+        "EntryPerson", back_populates="person", cascade="all, delete-orphan"
+    )
+
+    @property
+    def is_alive(self):
+        return self.death_date is None
+
+    @property
+    def age(self):
+        """Edad calculada en runtime (None si falta birth_date)."""
+        if not self.birth_date:
+            return None
+        end = self.death_date or date.today()
+        years = end.year - self.birth_date.year
+        if (end.month, end.day) < (self.birth_date.month, self.birth_date.day):
+            years -= 1
+        return years
+
+    @property
+    def entries_as_director(self):
+        return [link.entry for link in self.links if link.role == "director"]
+
+    @property
+    def entries_as_actor(self):
+        return [link.entry for link in self.links if link.role == "actor"]
+
+    def __repr__(self):
+        return f"<Person {self.name}>"
+
+
+class EntryPerson(db.Model):
+    __tablename__ = "entry_person"
+    entry_id = db.Column(db.Integer, db.ForeignKey("entry.id"), primary_key=True)
+    person_id = db.Column(db.Integer, db.ForeignKey("person.id"), primary_key=True)
+    role = db.Column(db.String(20), primary_key=True)  # 'director' | 'actor'
+
+    entry = db.relationship("Entry", back_populates="people")
+    person = db.relationship("Person", back_populates="links")
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -146,6 +228,36 @@ def normalize_text(value):
     """Minúsculas y sin acentos, para búsquedas tolerantes."""
     text = unicodedata.normalize("NFKD", value or "")
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
+
+
+def parse_date(value):
+    """Parsea 'YYYY-MM-DD'. Devuelve date, o None si está vacío o es inválido."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def get_or_create_person(name):
+    """Find-or-create por nombre normalizado. Idempotente. Devuelve (person, created)."""
+    clean = (name or "").strip()
+    if not clean:
+        return None, False
+    norm = normalize_text(clean)
+    person = Person.query.filter_by(normalized_name=norm).first()
+    if person:
+        return person, False
+    person = Person(name=clean, normalized_name=norm)
+    db.session.add(person)
+    try:
+        db.session.flush()  # asigna id antes de vincular; la unique constraint protege de duplicados
+    except IntegrityError:
+        db.session.rollback()
+        return Person.query.filter_by(normalized_name=norm).first(), False
+    return person, True
 
 
 def send_email(to, subject, body):
@@ -685,6 +797,43 @@ def init_db():
     """Crea las tablas que falten en la base de datos."""
     db.create_all()
     click.echo("Esquema verificado: tablas creadas/actualizadas.")
+
+
+@app.cli.command("migrate-people")
+@click.option("--check", is_flag=True, help="Solo audita (no escribe): reporta nombres CSV sin Person/enlace.")
+def migrate_people(check):
+    """Convierte Entry.creator/main_cast (CSV) en Person + EntryPerson. Idempotente."""
+    created_people = linked = 0
+    missing = []
+    for entry in Entry.query.all():
+        for csv, role in ((entry.creator, "director"), (entry.main_cast, "actor")):
+            for raw in (csv or "").split(","):
+                name = raw.strip()
+                if not name:
+                    continue
+                if check:
+                    person = Person.query.filter_by(normalized_name=normalize_text(name)).first()
+                    if not person or not EntryPerson.query.filter_by(
+                        entry_id=entry.id, person_id=person.id, role=role
+                    ).first():
+                        missing.append((entry.id, name, role))
+                    continue
+                person, created = get_or_create_person(name)
+                created_people += int(created)
+                if not EntryPerson.query.filter_by(
+                    entry_id=entry.id, person_id=person.id, role=role
+                ).first():
+                    db.session.add(EntryPerson(entry_id=entry.id, person_id=person.id, role=role))
+                    linked += 1
+    if check:
+        for eid, name, role in missing:
+            click.echo(f"FALTA: entry {eid} · {name} · {role}")
+        if missing:
+            raise click.ClickException(f"{len(missing)} enlaces faltantes — NO continuar.")
+        click.echo(f"Auditoría OK: {Person.query.count()} personas, {EntryPerson.query.count()} enlaces. Todos los nombres CSV cubiertos.")
+        return
+    db.session.commit()
+    click.echo(f"Personas nuevas: {created_people}. Enlaces nuevos: {linked}. Total: {Person.query.count()} personas, {EntryPerson.query.count()} enlaces.")
 
 
 PLATFORM_SEED = [
