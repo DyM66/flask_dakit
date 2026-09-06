@@ -67,6 +67,29 @@
 {% endif %}
 {% endmacro %}
 
+{% macro awardrows(items, person_mode) %}
+{% if items %}
+{% for obj, won, noms, pct in items %}
+<div class="mb-2">
+    <div class="d-flex justify-content-between align-items-center small">
+        {% if person_mode %}
+        <a href="{{ url_for('person_detail', person_id=obj.id) }}" class="d-flex align-items-center gap-2 text-truncate text-decoration-none text-reset me-2">
+            {{ avatar(obj, 'avatar-xs rounded-circle flex-shrink-0') }}
+            <span class="text-truncate">{{ obj.name }}</span>
+        </a>
+        {% else %}
+        <a href="{{ url_for('index', q=obj.title) }}" class="text-truncate text-decoration-none text-reset me-2">{{ obj.title }}</a>
+        {% endif %}
+        <span class="text-nowrap small"><strong>{{ won }}</strong> 🏆 <span class="text-muted">/ {{ noms }} nom.</span></span>
+    </div>
+    <div class="progress dakit-bar"><div class="progress-bar bg-warning" role="progressbar" data-pct="{{ pct }}"></div></div>
+</div>
+{% endfor %}
+{% else %}
+<p class="text-muted small mb-0">Sin premios registrados todavía.</p>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="mb-4">
     <h1 class="h3 mb-0">📊 Mi dashboard</h1>
@@ -108,6 +131,27 @@
             </div>
         </div>
     </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-1">🏆 Títulos más premiados</h2>
+                <p class="text-muted small mb-2">{{ total_oscars_won }} Óscares ganados y {{ total_oscar_nominations }} candidaturas en total, en {{ awarded_entries }} títulos premiados.</p>
+                {{ awardrows(top_awarded_entries, false) }}
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 mb-1">🥇 Personas más premiadas</h2>
+                <p class="text-muted small mb-2">Solo quien ya está en tu biblioteca; las categorías técnicas cuentan para la obra.</p>
+                {{ awardrows(top_awarded_people, true) }}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">{{ barlist('🎬 Categorías que más ganas', top_award_categories, 'warning') }}</div>
+
     <div class="col-12 col-lg-6">{{ barlist('🎭 Géneros más vistos', top_genres, 'success') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('📺 Plataformas más usadas', top_platforms, 'info') }}</div>
     <div class="col-12 col-lg-6">{{ barlist('🗂️ Por tipo', by_type, 'warning') }}</div>

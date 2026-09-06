@@ -62,6 +62,21 @@
         {{ worksgrid(person.actor_links) }}
         {% endif %}
 
+        {% if person.awards %}
+        <h2 class="h5 border-top pt-3">Óscares
+            <span class="text-muted fs-6">({{ person.oscars_won }} ganados de {{ person.oscar_nominations }} candidaturas)</span>
+        </h2>
+        <ul class="list-unstyled mb-0">
+            {% for a in person.awards_sorted %}
+            <li class="mb-1 small">
+                <span class="badge text-bg-{{ 'warning' if a.won else 'secondary' }}">{{ '🏆 Ganó' if a.won else 'Nominada/o' }}</span>
+                {{ a.category }} · {{ a.ceremony_year }} ·
+                <a href="{{ url_for('index', q=a.entry.title) }}" class="text-decoration-none text-reset">{{ a.entry.title }}</a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
         <details class="mt-4">
             <summary class="text-muted small">Editar ficha (foto, fechas, nacionalidad)</summary>
             <form action="{{ url_for('person_edit', person_id=person.id) }}" method="POST" enctype="multipart/form-data" class="row g-2 mt-2">

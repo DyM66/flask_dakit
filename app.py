@@ -133,6 +133,19 @@ class Entry(db.Model):
     def cast_csv(self):
         return ", ".join(f"{l.person.name} ({l.character})" if l.character else l.person.name for l in self.cast_links)
 
+    @property
+    def oscars_won(self):
+        return sum(1 for a in self.awards if a.won)
+
+    @property
+    def oscar_nominations(self):
+        """Total de candidaturas: toda victoria cuenta también como nominación."""
+        return len(self.awards)
+
+    @property
+    def awards_sorted(self):
+        return sorted(self.awards, key=lambda a: (not a.won, a.category))
+
     def __repr__(self):
         return f"<{self.id} - {self.title}>"
 
@@ -201,6 +214,18 @@ class Person(db.Model):
     def actor_links(self):
         return [link for link in self.links if link.role == "actor"]
 
+    @property
+    def oscars_won(self):
+        return sum(1 for a in self.awards if a.won)
+
+    @property
+    def oscar_nominations(self):
+        return len(self.awards)
+
+    @property
+    def awards_sorted(self):
+        return sorted(self.awards, key=lambda a: (not a.won, -a.ceremony_year))
+
     def __repr__(self):
         return f"<Person {self.name}>"
 
@@ -214,6 +239,41 @@ class EntryPerson(db.Model):
 
     entry = db.relationship("Entry", back_populates="people")
     person = db.relationship("Person", back_populates="links")
+
+
+class Award(db.Model):
+    """Óscar de una obra, ganado o solo nominado.
+
+    El premiado se guarda en `person_id` cuando ya es alguien de la biblioteca (da ficha
+    enlazable) y en `recipient` cuando no lo es (guionistas, técnicos, productores): así se
+    responde «quién» sin poblar `person` con nombres que nunca aparecen en pantalla. Ambos
+    nulos = el premio es de la obra misma (Mejor Película, Animada, Internacional).
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    entry_id = db.Column(db.Integer, db.ForeignKey("entry.id"), nullable=False)
+    person_id = db.Column(db.Integer, db.ForeignKey("person.id"))
+    recipient = db.Column(db.String(200))
+    category = db.Column(db.String(80), nullable=False)
+    #: Año de la CEREMONIA, no el de estreno: Oppenheimer es de 2023 y ganó en 2024.
+    ceremony_year = db.Column(db.Integer, nullable=False)
+    won = db.Column(db.Boolean, nullable=False, default=False)
+
+    # SQLite considera distinto cada NULL, así que la restricción no cubre los premios de
+    # obra (person_id nulo); esos los deduplica la consulta previa de add-award/apply-awards.
+    __table_args__ = (
+        db.UniqueConstraint("entry_id", "person_id", "category", "ceremony_year", name="uq_award"),
+    )
+
+    entry = db.relationship("Entry", backref=db.backref("awards", cascade="all, delete-orphan"))
+    # Sin cascade de borrado: si se elimina la persona, el premio sigue siendo de la obra.
+    person = db.relationship("Person", backref="awards")
+
+    @property
+    def winner(self):
+        return self.person.name if self.person else self.recipient
+
+    def __repr__(self):
+        return f"<Award {self.category} {self.ceremony_year} entry={self.entry_id}>"
 
 
 @login_manager.user_loader
@@ -456,6 +516,26 @@ def ranked_with_pct(counter, limit):
     return [(name, count, round(count / top * 100)) for name, count in items]
 
 
+def ranked_awarded(model, won_counter, nom_counter, limit):
+    """Ordena por Óscares ganados y desempata por nominaciones → [(obj, ganados, nominaciones, pct)].
+
+    La barra mide victorias; si nadie ganó todavía, cae a nominaciones para no quedar plana.
+    """
+    ranked = sorted(nom_counter, key=lambda oid: (won_counter[oid], nom_counter[oid]), reverse=True)[:limit]
+    if not ranked:
+        return []
+    top_won = won_counter[ranked[0]]
+    if top_won:
+        scale = lambda oid: won_counter[oid] / top_won
+    else:
+        scale = lambda oid: nom_counter[oid] / nom_counter[ranked[0]]
+    objs = {o.id: o for o in model.query.filter(model.id.in_(ranked))}
+    return [
+        (objs[oid], won_counter[oid], nom_counter[oid], round(scale(oid) * 100))
+        for oid in ranked if oid in objs
+    ]
+
+
 # ─────────────────────────────── Catálogo ──────────────────────────────
 
 @app.route("/")
@@ -566,6 +646,23 @@ def dashboard():
     coral_map = {e.id: e for e in Entry.query.filter(Entry.id.in_([eid for eid, _ in coral_raw]))}
     top_coral = [(coral_map[eid], n) for eid, n in coral_raw if eid in coral_map]
 
+    # Óscares: el premio siempre cuelga de una obra; person_id solo cuando el premiado
+    # ya es alguien de la biblioteca (las técnicas y las de obra van sin persona).
+    entry_won, entry_noms = Counter(), Counter()
+    person_won, person_noms = Counter(), Counter()
+    category_won = Counter()
+    for entry_id, person_id, category, won in db.session.query(
+        Award.entry_id, Award.person_id, Award.category, Award.won
+    ):
+        entry_noms[entry_id] += 1
+        if person_id:
+            person_noms[person_id] += 1
+        if won:
+            entry_won[entry_id] += 1
+            category_won[category] += 1
+            if person_id:
+                person_won[person_id] += 1
+
     series_with_seasons = sorted(
         ((e.title, len(e.seasons)) for e in entries if e.seasons),
         key=lambda pair: pair[1],
@@ -593,6 +690,12 @@ def dashboard():
         top_series=series_with_seasons[:8],
         unique_directors=len(director_counter),
         unique_actors=len(actor_counter),
+        top_awarded_entries=ranked_awarded(Entry, entry_won, entry_noms, 12),
+        top_awarded_people=ranked_awarded(Person, person_won, person_noms, 12),
+        top_award_categories=ranked_with_pct(category_won, 10),
+        total_oscars_won=sum(entry_won.values()),
+        total_oscar_nominations=sum(entry_noms.values()),
+        awarded_entries=len(entry_won),
     )
 
 
@@ -1157,6 +1260,96 @@ def apply_links(json_path, no_create):
         created += 1
     db.session.commit()
     click.echo(f"Vínculos nuevos: {created}. Personajes actualizados: {updated}. Sin cambio: {skipped}. Sin match: {missing}.")
+
+
+def find_award(entry_id, person_id, category, ceremony_year):
+    return Award.query.filter_by(
+        entry_id=entry_id, person_id=person_id, category=category, ceremony_year=ceremony_year
+    ).first()
+
+
+@app.cli.command("add-award")
+@click.option("--entry-title", "entry_title", required=True)
+@click.option("--category", required=True, help='Categoría, p. ej. "Mejor Actor".')
+@click.option("--year", "ceremony_year", required=True, type=int, help="Año de la CEREMONIA.")
+@click.option("--person", default="", help="Premiado que ya está en la biblioteca.")
+@click.option("--recipient", default="", help="Premiado que NO está en la biblioteca (texto libre).")
+@click.option("--nominated", is_flag=True, help="Solo nominación; sin la bandera se registra como ganado.")
+def add_award(entry_title, category, ceremony_year, person, recipient, nominated):
+    """Registra un Óscar de una obra existente. Idempotente."""
+    entry = Entry.query.filter(db.func.lower(Entry.title) == entry_title.lower()).first()
+    if not entry:
+        click.echo(f"No existe la entrada «{entry_title}».")
+        return
+    winner = None
+    if person:
+        winner = Person.query.filter_by(normalized_name=normalize_text(person)).first()
+        if not winner:
+            click.echo(f"No existe la persona «{person}» (créala con add-person o usa --recipient).")
+            return
+    category = category.strip()
+    won = not nominated
+    award = find_award(entry.id, winner.id if winner else None, category, ceremony_year)
+    if award:
+        if award.won != won:
+            award.won = won
+            db.session.commit()
+            click.echo(f"Actualizado a {'ganado' if won else 'nominado'}: {category} · «{entry.title}».")
+        else:
+            click.echo(f"Ya estaba registrado: {category} · «{entry.title}» ({ceremony_year}).")
+        return
+    db.session.add(Award(
+        entry_id=entry.id, person_id=winner.id if winner else None,
+        recipient=(recipient.strip() or None) if not winner else None,
+        category=category, ceremony_year=ceremony_year, won=won,
+    ))
+    db.session.commit()
+    who = winner.name if winner else (recipient.strip() or entry.title)
+    click.echo(f"{'Ganado' if won else 'Nominado'}: {category} {ceremony_year} · {who} · «{entry.title}».")
+
+
+@app.cli.command("apply-awards")
+@click.argument("json_path")
+def apply_awards(json_path):
+    """Registra Óscares en lote desde [{entry_title, category, ceremony_year, won, person?, recipient?}].
+
+    Solo entradas y personas existentes; idempotente.
+    """
+    import json
+    with open(json_path, encoding="utf-8") as handle:
+        items = json.load(handle)
+    people = {p.normalized_name: p for p in Person.query.all()}
+    entries = {normalize_text(e.title): e for e in Entry.query.all()}
+    created = updated = skipped = missing = 0
+    for it in items:
+        entry = entries.get(normalize_text(it.get("entry_title", "")))
+        category = (it.get("category") or "").strip()
+        ceremony_year = it.get("ceremony_year")
+        if not entry or not category or not ceremony_year:
+            missing += 1
+            continue
+        name = (it.get("person") or "").strip()
+        winner = people.get(normalize_text(name)) if name else None
+        if name and not winner:
+            missing += 1
+            continue
+        won = bool(it.get("won"))
+        award = find_award(entry.id, winner.id if winner else None, category, ceremony_year)
+        if award:
+            if award.won != won:
+                award.won = won
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        db.session.add(Award(
+            entry_id=entry.id, person_id=winner.id if winner else None,
+            recipient=((it.get("recipient") or "").strip() or None) if not winner else None,
+            category=category, ceremony_year=ceremony_year, won=won,
+        ))
+        created += 1
+    db.session.commit()
+    click.echo(f"Premios nuevos: {created}. Actualizados: {updated}. Sin cambio: {skipped}. Sin match: {missing}.")
 
 
 PLATFORM_SEED = [
