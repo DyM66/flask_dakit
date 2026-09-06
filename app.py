@@ -1262,10 +1262,19 @@ def apply_links(json_path, no_create):
     click.echo(f"Vínculos nuevos: {created}. Personajes actualizados: {updated}. Sin cambio: {skipped}. Sin match: {missing}.")
 
 
-def find_award(entry_id, person_id, category, ceremony_year):
-    return Award.query.filter_by(
+def find_award(entry_id, person_id, category, ceremony_year, recipient=None):
+    """Busca un premio por su clave natural.
+
+    Cuando no hay persona, el premiado forma parte de la clave: una obra puede competir
+    dos veces en la misma categoría y año (Slumdog Millionaire tuvo dos candidaturas a
+    Mejor Canción Original) y sin esto la segunda pisaría a la primera.
+    """
+    query = Award.query.filter_by(
         entry_id=entry_id, person_id=person_id, category=category, ceremony_year=ceremony_year
-    ).first()
+    )
+    if person_id is None:
+        query = query.filter(Award.recipient.is_(None) if recipient is None else Award.recipient == recipient)
+    return query.first()
 
 
 @app.cli.command("add-award")
@@ -1289,7 +1298,8 @@ def add_award(entry_title, category, ceremony_year, person, recipient, nominated
             return
     category = category.strip()
     won = not nominated
-    award = find_award(entry.id, winner.id if winner else None, category, ceremony_year)
+    who_text = (recipient.strip() or None) if not winner else None
+    award = find_award(entry.id, winner.id if winner else None, category, ceremony_year, who_text)
     if award:
         if award.won != won:
             award.won = won
@@ -1300,11 +1310,10 @@ def add_award(entry_title, category, ceremony_year, person, recipient, nominated
         return
     db.session.add(Award(
         entry_id=entry.id, person_id=winner.id if winner else None,
-        recipient=(recipient.strip() or None) if not winner else None,
-        category=category, ceremony_year=ceremony_year, won=won,
+        recipient=who_text, category=category, ceremony_year=ceremony_year, won=won,
     ))
     db.session.commit()
-    who = winner.name if winner else (recipient.strip() or entry.title)
+    who = winner.name if winner else (who_text or entry.title)
     click.echo(f"{'Ganado' if won else 'Nominado'}: {category} {ceremony_year} · {who} · «{entry.title}».")
 
 
@@ -1334,7 +1343,8 @@ def apply_awards(json_path):
             missing += 1
             continue
         won = bool(it.get("won"))
-        award = find_award(entry.id, winner.id if winner else None, category, ceremony_year)
+        who_text = ((it.get("recipient") or "").strip() or None) if not winner else None
+        award = find_award(entry.id, winner.id if winner else None, category, ceremony_year, who_text)
         if award:
             if award.won != won:
                 award.won = won
@@ -1344,8 +1354,7 @@ def apply_awards(json_path):
             continue
         db.session.add(Award(
             entry_id=entry.id, person_id=winner.id if winner else None,
-            recipient=((it.get("recipient") or "").strip() or None) if not winner else None,
-            category=category, ceremony_year=ceremony_year, won=won,
+            recipient=who_text, category=category, ceremony_year=ceremony_year, won=won,
         ))
         created += 1
     db.session.commit()
